@@ -4,6 +4,7 @@
     import { printViaUSB, printViaBLE } from "$lib/printer.js";
 
     let canvasEl;
+    let imgInput;
     let fabricCanvas;
     let labelWidth = 60;
     let labelHeight = 30;
@@ -14,12 +15,42 @@
     let initialized = false;
 
     // Font settings
+    let systemFonts = [];
     let fontFamily = "sans-serif";
     let fontSize = 20;
+    let fontError = "";
 
     // Print settings
-    let mode = "usb"; // 'usb' or 'ble'
+    let mode = "usb";
     let density = 3;
+
+    // Load fonts at mount (must be user-visible page)
+    async function loadSystemFonts() {
+        try {
+            if (typeof window.queryLocalFonts === "function") {
+                const fonts = await window.queryLocalFonts();
+                systemFonts = Array.from(
+                    new Set(fonts.map((f) => f.family)),
+                ).sort();
+            } else {
+                throw new Error("Local Font Access API not supported");
+            }
+        } catch (e) {
+            fontError = e.message;
+            systemFonts = [
+                "sans-serif",
+                "serif",
+                "monospace",
+                "cursive",
+                "fantasy",
+            ];
+        }
+        fontFamily = systemFonts[0];
+    }
+
+    onMount(() => {
+        loadSystemFonts();
+    });
 
     async function initCanvas() {
         canvasWidth = labelWidth * pxPerMm;
@@ -34,32 +65,19 @@
         const text = new fabric.Text("샘플 텍스트", {
             left: 10,
             top: 10,
-            fontSize,
             fontFamily,
+            fontSize,
             fill: "black",
         });
         fabricCanvas.add(text);
     }
 
-    async function addText() {
-        if (!customText.trim()) return;
-        const text = new fabric.Text(customText, {
-            left: 20,
-            top: 20,
-            fontSize,
-            fontFamily,
-            fill: "black",
-        });
-        fabricCanvas.add(text);
-        customText = "";
-    }
-
-    function handleImageUpload(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+    function handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file || !fabricCanvas) return;
         const reader = new FileReader();
-        reader.onload = (f) => {
-            fabric.Image.fromURL(f.target.result, (img) => {
+        reader.onload = ({ target }) => {
+            fabric.Image.fromURL(target.result, (img) => {
                 const maxW = canvasWidth * 0.6;
                 const maxH = canvasHeight * 0.6;
                 const scale = Math.min(maxW / img.width, maxH / img.height, 1);
@@ -68,6 +86,19 @@
             });
         };
         reader.readAsDataURL(file);
+    }
+
+    function addText() {
+        if (!customText.trim() || !fabricCanvas) return;
+        const text = new fabric.Text(customText, {
+            left: 20,
+            top: 20,
+            fontFamily,
+            fontSize,
+            fill: "black",
+        });
+        fabricCanvas.add(text);
+        customText = "";
     }
 
     function deleteSelected() {
@@ -88,13 +119,19 @@
         fabricCanvas.renderAll();
     }
 
+    function applyFont() {
+        const obj = fabricCanvas.getActiveObject();
+        if (obj && obj.set) {
+            obj.set({ fontFamily, fontSize });
+            obj.setCoords();
+            fabricCanvas.renderAll();
+        }
+    }
+
     async function onPrint() {
         if (!fabricCanvas) return alert("먼저 캔버스를 생성하세요");
-        if (mode === "usb") {
-            await printViaUSB(canvasEl, { density });
-        } else {
-            await printViaBLE(canvasEl, { density });
-        }
+        if (mode === "usb") await printViaUSB(canvasEl, { density });
+        else await printViaBLE(canvasEl, { density });
         alert("출력이 완료되었습니다.");
     }
 </script>
@@ -128,91 +165,83 @@
             >
         </div>
     {:else}
+        <canvas
+            bind:this={canvasEl}
+            width={canvasWidth}
+            height={canvasHeight}
+            class="border block"
+            style="image-rendering:pixelated;"
+        ></canvas>
         <div class="space-y-4">
-            <div class="flex flex-wrap items-center space-x-4">
-                <div class="flex items-center space-x-4">
-                    <span>모드:</span>
-                    <label class="flex items-center space-x-1">
-                        <input
-                            type="radio"
-                            bind:group={mode}
-                            value="usb"
-                            class="form-radio"
-                        />
-                        <span>USB</span>
-                    </label>
-                    <label class="flex items-center space-x-1">
-                        <input
-                            type="radio"
-                            bind:group={mode}
-                            value="ble"
-                            class="form-radio"
-                        />
-                        <span>Bluetooth</span>
-                    </label>
-                </div>
-                <label class="flex items-center space-x-2">
-                    <span>밀도:</span>
-                    <input type="range" min="1" max="5" bind:value={density} />
-                    <span>{density}</span>
-                </label>
+            <div class="flex items-center space-x-4">
+                <input
+                    bind:this={imgInput}
+                    type="file"
+                    accept="image/*"
+                    on:change={handleImageUpload}
+                    class="hidden"
+                />
                 <button
-                    class="px-4 py-2 bg-green-600 text-white rounded"
-                    on:click={onPrint}>출력</button
+                    on:click={() => imgInput.click()}
+                    class="px-3 py-1 bg-gray-200 rounded">이미지 선택</button
+                >
+                <input
+                    type="text"
+                    bind:value={customText}
+                    placeholder="텍스트 입력"
+                    class="border px-2 py-1 w-64"
+                />
+                <button
+                    on:click={addText}
+                    class="px-3 py-1 bg-blue-600 text-white rounded"
+                    >텍스트 추가</button
                 >
             </div>
-
-            <div class="flex flex-wrap items-center space-x-4">
-                <label class="flex items-center space-x-2">
-                    <span>폰트 패밀리:</span>
-                    <select bind:value={fontFamily} class="border px-2 py-1">
-                        <option value="sans-serif">sans-serif</option>
-                        <option value="serif">serif</option>
-                        <option value="monospace">monospace</option>
-                        <option value="cursive">cursive</option>
-                        <option value="fantasy">fantasy</option>
-                    </select>
-                </label>
-                <label class="flex items-center space-x-2">
-                    <span>폰트 크기:</span>
-                    <input
-                        type="number"
-                        bind:value={fontSize}
-                        min="8"
-                        class="border px-2 py-1 w-20"
-                    />
-                </label>
+            <div class="flex items-center space-x-4">
+                {#if fontError}
+                    <span class="text-red-500">{fontError}</span>
+                {/if}
+                <select bind:value={fontFamily} class="border px-2 py-1">
+                    {#each systemFonts as font}
+                        <option value={font}>{font}</option>
+                    {/each}
+                </select>
+                <input
+                    type="number"
+                    bind:value={fontSize}
+                    min="8"
+                    class="border px-2 py-1 w-20"
+                />
                 <button
+                    on:click={applyFont}
                     class="px-3 py-1 bg-indigo-600 text-white rounded"
-                    on:click={() => {
-                        const obj = fabricCanvas.getActiveObject();
-                        if (obj) {
-                            obj.set({ fontFamily, fontSize });
-                            obj.setCoords();
-                            fabricCanvas.renderAll();
-                        }
-                    }}>폰트 적용</button
+                    >폰트 적용</button
                 >
             </div>
-
-            <div class="flex space-x-2">
+            <div class="flex items-center space-x-4">
+                <label
+                    ><input type="radio" bind:group={mode} value="usb" /> USB</label
+                >
+                <label
+                    ><input type="radio" bind:group={mode} value="ble" /> Bluetooth</label
+                >
+                <input type="range" min="1" max="5" bind:value={density} />
+                <span>{density}</span>
                 <button
-                    class="px-3 py-1 bg-red-500 text-white rounded"
-                    on:click={deleteSelected}>선택 삭제</button
+                    on:click={onPrint}
+                    class="px-4 py-2 bg-green-600 text-white rounded"
+                    >출력</button
                 >
                 <button
+                    on:click={deleteSelected}
+                    class="px-3 py-1 bg-red-500 text-white rounded">삭제</button
+                >
+                <button
+                    on:click={alignCenter}
                     class="px-3 py-1 bg-gray-600 text-white rounded"
-                    on:click={alignCenter}>중앙 정렬</button
+                    >정렬</button
                 >
             </div>
-
-            <canvas
-                bind:this={canvasEl}
-                width={canvasWidth}
-                height={canvasHeight}
-                class="border border-gray-400 block"
-                style="image-rendering: pixelated;"
-            ></canvas>
         </div>
     {/if}
 </main>
@@ -221,13 +250,6 @@
     canvas {
         max-width: 100%;
         height: auto;
-    }
-    .btn {
-        padding: 0.5rem 1rem;
-        border-radius: 0.375rem;
-    }
-    .btn-green {
-        background-color: #16a34a;
-        color: white;
+        border: 1px solid #ccc;
     }
 </style>
