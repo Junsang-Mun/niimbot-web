@@ -218,7 +218,7 @@
 </script>
 
 <main class="p-6 space-y-6">
-    <h1 class="text-2xl font-bold">🧾 Niimbot 라벨 프린터</h1>
+    <h1 class="text-2xl font-bold">Niimbot 라벨 프린터 웹 출력기</h1>
 
     {#if !initialized}
         <div class="flex items-center space-x-4">
