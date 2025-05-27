@@ -20,15 +20,14 @@ export class WebBLETransport {
     const device = await navigator.bluetooth.requestDevice({
       filters: [
         // adjust namePrefix or service UUID based on actual device
-        { namePrefix: 'NIIMBOT' },
-        { services: [0xFFE0] }
+        { namePrefix: "B1" },
       ],
-      optionalServices: [0xFFE0]
+      optionalServices: [0xffe0],
     });
     const server = await device.gatt.connect();
-    const service = await server.getPrimaryService(0xFFE0);
+    const service = await server.getPrimaryService(0xffe0);
     // Characteristic UUID may vary; FFE1 is common for SPP-like transfer
-    const characteristic = await service.getCharacteristic(0xFFE1);
+    const characteristic = await service.getCharacteristic(0xffe1);
     return new WebBLETransport(characteristic);
   }
 

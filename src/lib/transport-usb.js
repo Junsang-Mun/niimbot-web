@@ -20,9 +20,7 @@ export class WebUSBTransport {
    */
   static async requestDevice() {
     // Prompt user to select a Niimbot printer (vendorId may vary)
-    const device = await navigator.usb.requestDevice({
-      filters: [{ vendorId: 0x0416 }],
-    });
+    const device = await navigator.usb.requestDevice();
     const transport = new WebUSBTransport(device);
     await transport.connect();
     return transport;
