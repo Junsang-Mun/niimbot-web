@@ -24,7 +24,7 @@
     let mode = "usb";
     let density = 3;
 
-    // Load fonts at mount (must be user-visible page)
+    // Load local fonts at mount
     async function loadSystemFonts() {
         try {
             if (typeof window.queryLocalFonts === "function") {
@@ -73,19 +73,96 @@
     }
 
     function handleImageUpload(event) {
-        const file = event.target.files[0];
-        if (!file || !fabricCanvas) return;
-        const reader = new FileReader();
-        reader.onload = ({ target }) => {
-            fabric.Image.fromURL(target.result, (img) => {
-                const maxW = canvasWidth * 0.6;
-                const maxH = canvasHeight * 0.6;
-                const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-                img.set({ left: 10, top: 50, scaleX: scale, scaleY: scale });
-                fabricCanvas.add(img);
+        const file = event.target.files?.[0];
+        if (!file || !fabricCanvas) {
+            console.log("파일이나 캔버스가 없습니다:", {
+                file: !!file,
+                canvas: !!fabricCanvas,
             });
+            return;
+        }
+
+        console.log("파일 선택됨:", file.name, file.type);
+
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+            const dataURL = e.target.result;
+            console.log("파일 읽기 완료, 이미지 생성 시도");
+
+            // Fabric.js v5+ 방식 (Promise 기반)
+            if (fabric.Image.fromURL.length === 1) {
+                fabric.Image.fromURL(dataURL)
+                    .then((img) => {
+                        addImageToCanvas(img);
+                    })
+                    .catch((error) => {
+                        console.error("이미지 로드 실패 (Promise):", error);
+                        // 콜백 방식으로 재시도
+                        tryCallbackMethod(dataURL);
+                    });
+            } else {
+                // Fabric.js v4 이하 방식 (콜백 기반)
+                tryCallbackMethod(dataURL);
+            }
         };
+
+        reader.onerror = function (error) {
+            console.error("파일 읽기 실패:", error);
+            alert("파일을 읽을 수 없습니다.");
+        };
+
         reader.readAsDataURL(file);
+    }
+
+    function tryCallbackMethod(dataURL) {
+        fabric.Image.fromURL(
+            dataURL,
+            (img) => {
+                if (img) {
+                    console.log("이미지 생성 성공 (콜백)");
+                    addImageToCanvas(img);
+                } else {
+                    console.error("이미지 생성 실패 (콜백)");
+                    alert("이미지를 로드할 수 없습니다.");
+                }
+            },
+            {
+                crossOrigin: "anonymous",
+            },
+        );
+    }
+
+    function addImageToCanvas(img) {
+        console.log("캔버스에 이미지 추가 시작");
+
+        const maxW = canvasWidth * 0.6;
+        const maxH = canvasHeight * 0.6;
+        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+
+        console.log("이미지 크기 조정:", {
+            original: { width: img.width, height: img.height },
+            max: { width: maxW, height: maxH },
+            scale: scale,
+        });
+
+        img.set({
+            left: 10,
+            top: 50,
+            scaleX: scale,
+            scaleY: scale,
+        });
+
+        fabricCanvas.add(img);
+        fabricCanvas.setActiveObject(img);
+        fabricCanvas.requestRenderAll();
+
+        console.log("이미지 추가 완료");
+
+        // 입력 필드 초기화
+        if (imgInput) {
+            imgInput.value = "";
+        }
     }
 
     function addText() {
@@ -98,12 +175,16 @@
             fill: "black",
         });
         fabricCanvas.add(text);
+        fabricCanvas.requestRenderAll();
         customText = "";
     }
 
     function deleteSelected() {
         const active = fabricCanvas.getActiveObject();
-        if (active) fabricCanvas.remove(active);
+        if (active) {
+            fabricCanvas.remove(active);
+            fabricCanvas.requestRenderAll();
+        }
     }
 
     function alignCenter() {
@@ -121,7 +202,7 @@
 
     function applyFont() {
         const obj = fabricCanvas.getActiveObject();
-        if (obj && obj.set) {
+        if (obj) {
             obj.set({ fontFamily, fontSize });
             obj.setCoords();
             fabricCanvas.renderAll();
@@ -183,7 +264,7 @@
                 />
                 <button
                     on:click={() => imgInput.click()}
-                    class="px-3 py-1 bg-gray-200 rounded">이미지 선택</button
+                    class="px-3 py-1 bg-gray-200 rounded">이미지 삽입</button
                 >
                 <input
                     type="text"
@@ -219,14 +300,21 @@
                 >
             </div>
             <div class="flex items-center space-x-4">
-                <label
+                <label class="flex items-center space-x-2"
                     ><input type="radio" bind:group={mode} value="usb" /> USB</label
                 >
-                <label
+                <label class="flex items-center space-x-2"
                     ><input type="radio" bind:group={mode} value="ble" /> Bluetooth</label
                 >
-                <input type="range" min="1" max="5" bind:value={density} />
-                <span>{density}</span>
+                <label class="flex items-center space-x-2"
+                    ><span>밀도:</span><input
+                        type="range"
+                        min="1"
+                        max="5"
+                        bind:value={density}
+                        class="form-range"
+                    /><span>{density}</span></label
+                >
                 <button
                     on:click={onPrint}
                     class="px-4 py-2 bg-green-600 text-white rounded"
