@@ -3,59 +3,160 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>NIIMBOT PNG Converter</title>
+        <title>NIIMBOT Interactive Label Maker</title>
         <link rel="stylesheet" href="styles.css" />
+        <link rel="stylesheet" href="canvas.css" />
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     </head>
     <body>
         <div class="container">
-            <h1>🖨️ NIIMBOT PNG Converter</h1>
-
-            <div class="upload-section">
-                <p>Select a PNG image to convert for your NIIMBOT B1 printer</p>
-                <input
-                    type="file"
-                    id="fileInput"
-                    class="file-input"
-                    accept=".png,image/png"
-                />
-                <button class="upload-button">Choose PNG File</button>
-                <p id="fileName" class="file-name"></p>
-            </div>
+            <h1>🖨️ NIIMBOT Interactive Label Designer</h1>
 
             <div class="settings">
                 <div class="setting-group">
-                    <label for="width">Width (pixels):</label>
+                    <label for="printerModel">Printer Model:</label>
+                    <select id="printerModel">
+                        <option value="B21">B21 (max 384px width)</option>
+                        <option value="B1" selected>B1 (max 384px width)</option>
+                        <option value="B18">B18 (max 384px width)</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label for="labelWidth">Width (mm):</label>
                     <input
                         type="number"
-                        id="width"
-                        value="384"
-                        min="1"
-                        max="1000"
+                        id="labelWidth"
+                        value="48"
+                        min="10"
+                        max="50"
                     />
                 </div>
                 <div class="setting-group">
-                    <label for="height">Height (pixels):</label>
+                    <label for="labelHeight">Height (mm):</label>
                     <input
                         type="number"
-                        id="height"
-                        value="240"
-                        min="1"
-                        max="1000"
+                        id="labelHeight"
+                        value="30"
+                        min="10"
+                        max="100"
                     />
                 </div>
             </div>
 
-            <div class="preview-section">
-                <img
-                    id="previewImage"
-                    class="preview-image hidden"
-                    alt="Preview"
-                />
+            <div class="canvas-container">
+                <canvas id="labelCanvas"></canvas>
             </div>
 
-            <button id="convertButton" class="convert-button" disabled>
-                Convert to NIIMBOT Packet
-            </button>
+            <div class="tools-container">
+                <div class="tool-group">
+                    <h3>Drawing Tools</h3>
+                    <div class="tool-buttons">
+                        <button id="drawTool" class="tool-button active">
+                            <span class="icon">✏️</span> Draw
+                        </button>
+                        <button id="eraseTool" class="tool-button">
+                            <span class="icon">🧽</span> Erase
+                        </button>
+                        <input type="color" id="brushColor" value="#000000" />
+                        <div class="brush-size">
+                            <label for="brushSize">Size:</label>
+                            <input
+                                type="range"
+                                id="brushSize"
+                                min="1"
+                                max="20"
+                                value="5"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tool-group">
+                    <h3>Text Tools</h3>
+                    <div class="tool-buttons">
+                        <button id="addText" class="tool-button">
+                            <span class="icon">T</span> Add Text
+                        </button>
+                        <select id="fontFamily">
+                            <option value="Arial">Arial</option>
+                            <option value="Helvetica">Helvetica</option>
+                            <option value="Times New Roman">Times New Roman</option>
+                            <option value="Courier New">Courier New</option>
+                            <option value="Georgia">Georgia</option>
+                            <option value="Verdana">Verdana</option>
+                            <option value="Impact">Impact</option>
+                        </select>
+                        <select id="fontSize">
+                            <option value="12">12px</option>
+                            <option value="14">14px</option>
+                            <option value="16" selected>16px</option>
+                            <option value="18">18px</option>
+                            <option value="20">20px</option>
+                            <option value="24">24px</option>
+                            <option value="28">28px</option>
+                            <option value="32">32px</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="tool-group">
+                    <h3>Image Tools</h3>
+                    <div class="tool-buttons">
+                        <button id="uploadImageBtn" class="tool-button">
+                            <span class="icon">🖼️</span> Upload Image
+                        </button>
+                        <input type="file" id="uploadImage" accept="image/*" style="display: none;" />
+                    </div>
+                </div>
+
+                <div class="tool-group">
+                    <h3>Canvas Actions</h3>
+                    <div class="tool-buttons">
+                        <button id="clearCanvas" class="tool-button warning">
+                            <span class="icon">🗑️</span> Clear Canvas
+                        </button>
+                        <button id="deleteSelected" class="tool-button warning">
+                            <span class="icon">❌</span> Delete Selected
+                        </button>
+                        <button id="bringToFront" class="tool-button">
+                            <span class="icon">⬆️</span> Bring to Front
+                        </button>
+                        <button id="sendToBack" class="tool-button">
+                            <span class="icon">⬇️</span> Send to Back
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="preview-actions">
+                <button id="previewButton" class="preview-button">
+                    <span class="icon">👁️</span> Preview Label
+                </button>
+                <button id="convertButton" class="convert-button">
+                    <span class="icon">🔄</span> Convert to NIIMBOT Packet
+                </button>
+            </div>
+
+            <div id="previewModal" class="modal hidden">
+                <div class="modal-content">
+                    <span class="close-modal">&times;</span>
+                    <h2>Label Preview</h2>
+                    <div class="preview-image-container">
+                        <img id="previewImage" alt="Label Preview" />
+                    </div>
+                    <p>This is how your label will appear when printed (actual size).</p>
+                    <div class="preview-info">
+                        <div class="info-item">
+                            <span class="info-label">Dimensions:</span>
+                            <span id="dimensionsInfo"></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Resolution:</span>
+                            <span id="resolutionInfo">8 pixels/mm (203 dpi)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <div id="status" class="status hidden"></div>
 
@@ -73,6 +174,8 @@
             </div>
         </div>
 
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/font-detect/0.3.1/fontdetect.min.js"></script>
+        <script type="module" src="canvas.js"></script>
         <script type="module" src="main.js"></script>
     </body>
 </html>

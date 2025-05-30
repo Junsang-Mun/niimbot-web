@@ -1,125 +1,94 @@
 /**
- * Main Application Logic for NIIMBOT PNG Converter
+ * Main Application Logic for NIIMBOT Label Designer
  */
 
 import { createNiimbotPacketFromPNG } from "./niimbot.js";
+import { showStatus } from "./canvas.js";
 
 // Global variables
-let selectedFile = null;
 let currentPacket = null;
 
 // DOM elements
-const fileInput = document.getElementById("fileInput");
-const fileName = document.getElementById("fileName");
-const previewImage = document.getElementById("previewImage");
-const convertButton = document.getElementById("convertButton");
-const status = document.getElementById("status");
-const resultSection = document.getElementById("resultSection");
-const packetInfo = document.getElementById("packetInfo");
-const downloadButton = document.getElementById("downloadButton");
-const downloadHexButton = document.getElementById("downloadHexButton");
-
-// Event listeners
 document.addEventListener("DOMContentLoaded", initializeApp);
 
 function initializeApp() {
-  fileInput.addEventListener("change", handleFileSelect);
-  convertButton.addEventListener("click", convertImage);
-  downloadButton.addEventListener("click", downloadBinary);
-  downloadHexButton.addEventListener("click", downloadHex);
+  // Set up download button listeners
+  document.getElementById("downloadButton").addEventListener("click", downloadBinary);
+  document.getElementById("downloadHexButton").addEventListener("click", downloadHex);
+  
+  // Initialize print size presets
+  initializePrintSizePresets();
+}
 
-  // Initialize upload button click handler
-  const uploadButton = document.querySelector(".upload-button");
-  if (uploadButton) {
-    uploadButton.addEventListener("click", () => fileInput.click());
+/**
+ * Initialize print size presets based on common Niimbot label sizes
+ */
+function initializePrintSizePresets() {
+  const printerModelSelect = document.getElementById("printerModel");
+  
+  printerModelSelect.addEventListener("change", function() {
+    const model = this.value;
+    const widthInput = document.getElementById("labelWidth");
+    const heightInput = document.getElementById("labelHeight");
+    
+    // Set recommended default sizes based on model
+    switch(model) {
+      case "B21":
+        // Common B21 sizes
+        suggestSize(40, 20); // 40mm x 20mm label
+        break;
+      case "B1":
+        // Common B1 sizes
+        suggestSize(50, 30); // 50mm x 30mm label
+        break;
+      case "B18":
+        // Common B18 sizes
+        suggestSize(40, 15); // 40mm x 15mm label
+        break;
+      default:
+        // Default size
+        suggestSize(48, 30);
+    }
+  });
+  
+  /**
+   * Suggest a label size without forcing it
+   */
+  function suggestSize(width, height) {
+    const widthInput = document.getElementById("labelWidth");
+    const heightInput = document.getElementById("labelHeight");
+    
+    // Only suggest if the user hasn't explicitly set something different
+    if (!document.activeElement || 
+        (document.activeElement !== widthInput && 
+         document.activeElement !== heightInput)) {
+      
+      const currentWidth = parseInt(widthInput.value, 10);
+      const currentHeight = parseInt(heightInput.value, 10);
+      
+      // Check if current values are very different from suggested ones
+      const widthDiff = Math.abs(currentWidth - width);
+      const heightDiff = Math.abs(currentHeight - height);
+      
+      if (widthDiff > 10 || heightDiff > 10) {
+        if (confirm(`Would you like to use the recommended size for this printer model: ${width}mm × ${height}mm?`)) {
+          widthInput.value = width;
+          heightInput.value = height;
+          
+          // Trigger change event to update canvas
+          const event = new Event('change');
+          widthInput.dispatchEvent(event);
+        }
+      }
+    }
   }
 }
 
 /**
- * Handle file selection from input
+ * Set current packet from canvas conversion
  */
-function handleFileSelect(event) {
-  const file = event.target.files[0];
-  if (file && file.type === "image/png") {
-    selectedFile = file;
-    fileName.textContent = `Selected: ${file.name}`;
-
-    const reader = new FileReader();
-    reader.onload = function (e) {
-      previewImage.src = e.target.result;
-      previewImage.classList.remove("hidden");
-      convertButton.disabled = false;
-    };
-    reader.readAsDataURL(file);
-
-    hideStatus();
-  } else {
-    showStatus("Please select a valid PNG file.", "error");
-    resetFileSelection();
-  }
-}
-
-/**
- * Convert the selected image to NIIMBOT packet
- */
-async function convertImage() {
-  if (!selectedFile) {
-    showStatus("No file selected", "error");
-    return;
-  }
-
-  const width = parseInt(document.getElementById("width").value);
-  const height = parseInt(document.getElementById("height").value);
-
-  if (!width || !height || width <= 0 || height <= 0) {
-    showStatus("Please enter valid width and height values", "error");
-    return;
-  }
-
-  try {
-    showStatus("Converting image...", "success");
-    convertButton.disabled = true;
-    convertButton.textContent = "Converting...";
-
-    const imageUrl = URL.createObjectURL(selectedFile);
-    currentPacket = await createNiimbotPacketFromPNG(imageUrl, width, height);
-    URL.revokeObjectURL(imageUrl);
-
-    showPacketInfo(currentPacket);
-    showStatus("Conversion completed successfully!", "success");
-    resultSection.classList.remove("hidden");
-  } catch (error) {
-    showStatus(`Conversion failed: ${error.message}`, "error");
-    console.error("Conversion error:", error);
-    resultSection.classList.add("hidden");
-  } finally {
-    convertButton.disabled = false;
-    convertButton.textContent = "Convert to NIIMBOT Packet";
-  }
-}
-
-/**
- * Display packet information
- */
-function showPacketInfo(packet) {
-  const hex = Array.from(packet)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join(" ")
-    .toUpperCase();
-
-  const payloadLength = (packet[3] << 8) | packet[4];
-
-  packetInfo.innerHTML = `
-        <strong>Packet Size:</strong> ${packet.length} bytes<br>
-        <strong>Header:</strong> ${hex.substring(0, 11)} ...<br>
-        <strong>Command:</strong> 0x${packet[2].toString(16).padStart(2, "0").toUpperCase()}<br>
-        <strong>Payload Length:</strong> ${payloadLength} bytes<br>
-        <strong>Checksum:</strong> 0x${packet[packet.length - 3].toString(16).padStart(2, "0").toUpperCase()}<br>
-        <strong>Full Hex Data:</strong><br>
-        <div style="font-size: 12px; max-height: 200px; overflow-y: auto; margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px;">
-            ${hex}
-        </div>
-    `;
+export function setCurrentPacket(packet) {
+  currentPacket = packet;
 }
 
 /**
@@ -138,7 +107,7 @@ function downloadBinary() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `niimbot_packet_${Date.now()}.bin`;
+    a.download = `niimbot_label_${Date.now()}.bin`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -176,7 +145,7 @@ function downloadHex() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `niimbot_packet_hex_${Date.now()}.txt`;
+    a.download = `niimbot_label_hex_${Date.now()}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -187,37 +156,4 @@ function downloadHex() {
     showStatus("Failed to download hex file", "error");
     console.error("Download error:", error);
   }
-}
-
-/**
- * Show status message
- */
-function showStatus(message, type) {
-  status.textContent = message;
-  status.className = `status ${type}`;
-  status.classList.remove("hidden");
-
-  if (type === "success") {
-    setTimeout(hideStatus, 3000);
-  }
-}
-
-/**
- * Hide status message
- */
-function hideStatus() {
-  status.classList.add("hidden");
-}
-
-/**
- * Reset file selection
- */
-function resetFileSelection() {
-  selectedFile = null;
-  fileName.textContent = "";
-  previewImage.classList.add("hidden");
-  previewImage.src = "";
-  convertButton.disabled = true;
-  resultSection.classList.add("hidden");
-  currentPacket = null;
 }
