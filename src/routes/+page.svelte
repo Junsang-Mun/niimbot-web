@@ -34,6 +34,30 @@
     let drawingMode = false;
     let penSize = 2;
     let penColor = "#000000";
+    let systemFonts = [
+        "Arial",
+        "Helvetica",
+        "Times New Roman",
+        "Times",
+        "Courier New",
+        "Courier",
+        "Verdana",
+        "Georgia",
+        "Palatino",
+        "Garamond",
+        "Bookman",
+        "Comic Sans MS",
+        "Trebuchet MS",
+        "Impact",
+        "Tahoma",
+        "Lucida Sans",
+        "Lucida Console",
+    ];
+    let fontAccessSupported = false;
+    let fontAccessGranted = false;
+    let fontListLoading = false;
+    let currentFontPreview = fontFamily;
+    let fontError = null;
 
     // Update drawing brush when properties change
     $: if (
@@ -47,6 +71,19 @@
         fabricCanvas.freeDrawingBrush.strokeLineJoin = "round";
         fabricCanvas.renderAll();
     }
+    
+    // Update component state when selection changes
+    $: if (selectedObject) {
+        if (selectedObject.type === 'i-text' || selectedObject.type === 'text') {
+            fontFamily = selectedObject.fontFamily;
+            fontSize = selectedObject.fontSize;
+            textColor = selectedObject.fill;
+            currentFontPreview = selectedObject.fontFamily;
+        }
+    }
+
+    // Update current font preview when fontFamily changes
+    $: currentFontPreview = fontFamily;
 
     // Printer model configurations
     const printerConfigs = {
@@ -144,6 +181,9 @@
 
         // Setup snapping to grid and center
         setupSnapping();
+
+        // Check for Local Font Access API support
+        checkFontAccessSupport();
     });
 
     onDestroy(() => {
@@ -270,60 +310,70 @@
     // Canvas operation functions
     function toggleDrawMode() {
         if (!fabricCanvas) return;
-
-        // Toggle drawing mode
-        fabricCanvas.isDrawingMode = !fabricCanvas.isDrawingMode;
-        drawingMode = fabricCanvas.isDrawingMode;
-
-        if (drawingMode) {
-            // Ensure we have a brush and properly configure it
-            if (!fabricCanvas.freeDrawingBrush) {
-                try {
-                    fabricCanvas.freeDrawingBrush = new fabric.PencilBrush(
-                        fabricCanvas,
-                    );
-                } catch (e) {
-                    console.error("Error creating PencilBrush:", e);
-                    // Try alternative approach
-                    fabricCanvas.freeDrawingBrush =
-                        fabricCanvas._createPencilBrush
-                            ? fabricCanvas._createPencilBrush()
-                            : null;
+    
+        try {
+            // Toggle drawing mode
+            fabricCanvas.isDrawingMode = !fabricCanvas.isDrawingMode;
+            drawingMode = fabricCanvas.isDrawingMode;
+        
+            if (drawingMode) {
+                // Ensure we have a brush and properly configure it
+                if (!fabricCanvas.freeDrawingBrush) {
+                    try {
+                        fabricCanvas.freeDrawingBrush = new fabric.PencilBrush(fabricCanvas);
+                    } catch (e) {
+                        console.error("Error creating PencilBrush:", e);
+                        // Try alternative approach
+                        fabricCanvas.freeDrawingBrush = fabricCanvas._createPencilBrush ? 
+                            fabricCanvas._createPencilBrush() : null;
+                        
+                        if (!fabricCanvas.freeDrawingBrush) {
+                            throw new Error("Could not create drawing brush");
+                        }
+                    }
+                }
+                
+                if (fabricCanvas.freeDrawingBrush) {
+                    // Configure the brush with current settings
+                    fabricCanvas.freeDrawingBrush.width = penSize;
+                    fabricCanvas.freeDrawingBrush.color = penColor;
+                    fabricCanvas.freeDrawingBrush.strokeLineCap = 'round';
+                    fabricCanvas.freeDrawingBrush.strokeLineJoin = 'round';
+                }
+                
+                // Disable selection while in drawing mode
+                fabricCanvas.selection = false;
+                
+                // Show cursor as crosshair in drawing mode
+                if (fabricCanvas.upperCanvasEl) {
+                    fabricCanvas.upperCanvasEl.style.cursor = 'crosshair';
+                }
+            } else {
+                // Re-enable selection when exiting drawing mode
+                fabricCanvas.selection = true;
+                
+                // Reset cursor
+                if (fabricCanvas.upperCanvasEl) {
+                    fabricCanvas.upperCanvasEl.style.cursor = 'default';
                 }
             }
-
-            if (fabricCanvas.freeDrawingBrush) {
-                // Configure the brush with current settings
-                fabricCanvas.freeDrawingBrush.width = penSize;
-                fabricCanvas.freeDrawingBrush.color = penColor;
-                fabricCanvas.freeDrawingBrush.strokeLineCap = "round";
-                fabricCanvas.freeDrawingBrush.strokeLineJoin = "round";
+        
+            // Ensure canvas receives focus for immediate drawing
+            if (drawingMode && fabricCanvas.upperCanvasEl) {
+                fabricCanvas.upperCanvasEl.focus();
             }
-
-            // Disable selection while in drawing mode
-            fabricCanvas.selection = false;
-
-            // Show cursor as crosshair in drawing mode
-            if (fabricCanvas.upperCanvasEl) {
-                fabricCanvas.upperCanvasEl.style.cursor = "crosshair";
-            }
-        } else {
-            // Re-enable selection when exiting drawing mode
-            fabricCanvas.selection = true;
-
-            // Reset cursor
-            if (fabricCanvas.upperCanvasEl) {
-                fabricCanvas.upperCanvasEl.style.cursor = "default";
+            
+            // Refresh canvas
+            fabricCanvas.renderAll();
+        } catch (error) {
+            console.error("Error toggling drawing mode:", error);
+            status = `Error: ${error.message || "Could not enable drawing mode"}`;
+            drawingMode = false;
+            if (fabricCanvas) {
+                fabricCanvas.isDrawingMode = false;
+                fabricCanvas.selection = true;
             }
         }
-
-        // Ensure canvas receives focus for immediate drawing
-        if (drawingMode && fabricCanvas.upperCanvasEl) {
-            fabricCanvas.upperCanvasEl.focus();
-        }
-
-        // Refresh canvas
-        fabricCanvas.renderAll();
     }
 
     function addText() {
@@ -349,37 +399,96 @@
         if (!fabricCanvas || !event.target.files[0]) return;
 
         const file = event.target.files[0];
+        
+        // Validate file size
+        if (file.size > 10 * 1024 * 1024) { // 10MB limit
+            status = "Error: Image size exceeds 10MB limit";
+            event.target.value = '';
+            return;
+        }
+        
+        // Validate file type
+        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+            status = `Error: Unsupported image format (${file.type})`;
+            event.target.value = '';
+            return;
+        }
+
+        // Show loading status
+        status = `Loading image: ${file.name}...`;
+
         const reader = new FileReader();
 
         reader.onload = function (f) {
             const data = f.target.result;
-            fabric.Image.fromURL(data, function (img) {
-                // Scale down large images
-                const maxWidth = fabricCanvas.getWidth() * 0.8;
-                const maxHeight = fabricCanvas.getHeight() * 0.8;
+            
+            // Create an HTML image element to get accurate dimensions
+            const imgEl = new Image();
+            
+            // Set crossOrigin to anonymous to avoid CORS issues
+            imgEl.crossOrigin = 'anonymous';
+            
+            imgEl.onload = function() {
+                try {
+                    // Create fabric image from element to ensure proper rendering
+                    const fabricImage = new fabric.Image(imgEl, {
+                        originX: "center",
+                        originY: "center",
+                        left: fabricCanvas.getWidth() / 2,
+                        top: fabricCanvas.getHeight() / 2,
+                        crossOrigin: 'anonymous'
+                    });
+                    
+                    // Initialize filters array to ensure it exists
+                    fabricImage.filters = [];
+                    
+                    // Scale down large images
+                    const maxWidth = fabricCanvas.getWidth() * 0.8;
+                    const maxHeight = fabricCanvas.getHeight() * 0.8;
 
-                if (img.width > maxWidth || img.height > maxHeight) {
-                    const scale = Math.min(
-                        maxWidth / img.width,
-                        maxHeight / img.height,
-                    );
-                    img.scale(scale);
+                    if (fabricImage.width > maxWidth || fabricImage.height > maxHeight) {
+                        const scale = Math.min(
+                            maxWidth / fabricImage.width,
+                            maxHeight / fabricImage.height
+                        );
+                        fabricImage.scale(scale);
+                    }
+
+                    // Add to canvas
+                    fabricCanvas.add(fabricImage);
+                    fabricCanvas.setActiveObject(fabricImage);
+                    fabricCanvas.renderAll();
+                    
+                    // Update selected object
+                    selectedObject = fabricImage;
+                    
+                    // Reset status
+                    status = isConnected ? `Connected - ${currentConfig?.name || ""}` : "Disconnected";
+                } catch (error) {
+                    console.error("Error creating image:", error);
+                    status = `Error loading image: ${error.message || "Unknown error"}`;
                 }
-
-                img.set({
-                    left: fabricCanvas.getWidth() / 2,
-                    top: fabricCanvas.getHeight() / 2,
-                    originX: "center",
-                    originY: "center",
-                });
-
-                fabricCanvas.add(img);
-                fabricCanvas.setActiveObject(img);
-                fabricCanvas.renderAll();
-            });
+            };
+            
+            imgEl.onerror = function(e) {
+                console.error("Image loading error:", e);
+                status = "Error loading image: Invalid or corrupted image file";
+            };
+            
+            // Set source to trigger load
+            imgEl.src = data;
+        };
+        
+        reader.onerror = function(e) {
+            console.error("File reading error:", e);
+            status = "Error reading file";
         };
 
         reader.readAsDataURL(file);
+        
+        // Clear the input value so the same file can be uploaded again
+        event.target.value = '';
     }
 
     function alignObject(alignType) {
@@ -432,43 +541,147 @@
         fabricCanvas.renderAll();
     }
 
-    // Font handling functions
-    function handleFontUpload(event) {
-        if (!event.target.files[0]) return;
+    // Check for Local Font Access API support
+    function checkFontAccessSupport() {
+        if (typeof window !== "undefined") {
+            fontAccessSupported = "queryLocalFonts" in window;
+            console.log(
+                "Local Font Access API supported:",
+                fontAccessSupported,
+            );
 
-        const file = event.target.files[0];
-        const fontName = file.name.split(".")[0];
-        const reader = new FileReader();
+            if (!fontAccessSupported) {
+                // Provide info about browser support
+                const browser = getBrowserInfo();
+                console.log("Browser detected:", browser);
 
-        reader.onload = function (e) {
-            const fontData = e.target.result;
+                if (
+                    browser.includes("Chrome") &&
+                    parseInt(browser.split(" ")[1]) < 87
+                ) {
+                    fontError =
+                        "This browser doesn't support Local Font Access API. Use Chrome 87+ or Edge 87+";
+                } else if (
+                    !browser.includes("Chrome") &&
+                    !browser.includes("Edge")
+                ) {
+                    fontError =
+                        "Local Font Access API is only supported in Chrome and Edge browsers";
+                } else {
+                    fontError = "Local Font Access API is not available";
+                }
+            }
+        }
+    }
 
-            // Add font to document
-            const fontFace = new FontFace(fontName, fontData);
-            document.fonts.add(fontFace);
+    // Helper to detect browser
+    function getBrowserInfo() {
+        const userAgent = navigator.userAgent;
+        let browserInfo = "Unknown Browser";
 
-            fontFace
-                .load()
-                .then(() => {
-                    // Update font dropdown
-                    fontFamily = fontName;
+        if (userAgent.indexOf("Chrome") > -1) {
+            // Extract Chrome version
+            const match = userAgent.match(/Chrome\/(\d+)/);
+            const version = match ? match[1] : "?";
+            browserInfo = `Chrome ${version}`;
 
-                    // Apply to selected text object if applicable
-                    if (
-                        selectedObject &&
-                        selectedObject.type.includes("text")
-                    ) {
-                        selectedObject.set({ fontFamily: fontName });
-                        fabricCanvas.renderAll();
+            // Check for Edge (Chromium-based)
+            if (userAgent.indexOf("Edg") > -1) {
+                const edgeMatch = userAgent.match(/Edg\/(\d+)/);
+                const edgeVersion = edgeMatch ? edgeMatch[1] : "?";
+                browserInfo = `Edge ${edgeVersion}`;
+            }
+        } else if (userAgent.indexOf("Firefox") > -1) {
+            browserInfo = "Firefox";
+        } else if (userAgent.indexOf("Safari") > -1) {
+            browserInfo = "Safari";
+        }
+
+        return browserInfo;
+    }
+
+    // Request access to local fonts and load them
+    async function loadSystemFonts() {
+        if (!fontAccessSupported) {
+            fontError =
+                "Local Font Access API is not supported in this browser";
+            console.warn(fontError);
+            return;
+        }
+
+        fontListLoading = true;
+        fontError = null;
+
+        try {
+            // Request access to local fonts
+            const fonts = await window.queryLocalFonts();
+            fontAccessGranted = true;
+
+            // Process fonts and add to systemFonts
+            const uniqueFontFamilies = new Set();
+            const fontMap = new Map(); // To track postscripts by family
+
+            // Group fonts by family
+            fonts.forEach((font) => {
+                uniqueFontFamilies.add(font.family);
+
+                // Store postscript name for actual font usage
+                if (!fontMap.has(font.family)) {
+                    fontMap.set(font.family, []);
+                }
+                fontMap.get(font.family).push(font);
+            });
+
+            // Update system fonts list with unique font families
+            systemFonts = Array.from(uniqueFontFamilies).sort();
+            console.log(`Loaded ${systemFonts.length} system fonts`);
+
+            // Preload the first few fonts for immediate use
+            const preloadFonts = systemFonts.slice(0, 20);
+            let loadedCount = 0;
+
+            for (const fontFamily of preloadFonts) {
+                const familyFonts = fontMap.get(fontFamily);
+                if (familyFonts && familyFonts.length > 0) {
+                    try {
+                        // Try to load a regular or first available style
+                        const regularFont =
+                            familyFonts.find(
+                                (f) =>
+                                    f.style === "Regular" ||
+                                    f.style === "Normal" ||
+                                    f.style === "Medium",
+                            ) || familyFonts[0];
+
+                        // Load the font data to make it available
+                        const blob = await regularFont.blob();
+                        const cssFont = new FontFace(fontFamily, blob);
+                        await cssFont.load();
+                        document.fonts.add(cssFont);
+                        loadedCount++;
+                    } catch (e) {
+                        console.warn(
+                            `Failed to preload font ${fontFamily}:`,
+                            e,
+                        );
                     }
-                })
-                .catch((err) => {
-                    console.error("Font loading failed:", err);
-                    status = `Font loading failed: ${err.message}`;
-                });
-        };
+                }
+            }
 
-        reader.readAsArrayBuffer(file);
+            console.log(
+                `Preloaded ${loadedCount} of ${preloadFonts.length} fonts`,
+            );
+        } catch (error) {
+            console.error("Error loading system fonts:", error);
+            if (error.name === "SecurityError") {
+                fontError = "Permission to access local fonts was denied";
+                console.warn(fontError);
+            } else {
+                fontError = `Error loading fonts: ${error.message || "Unknown error"}`;
+            }
+        } finally {
+            fontListLoading = false;
+        }
     }
 
     // Printing function
@@ -478,48 +691,68 @@
         }
 
         isPrinting = true;
-        status = "Printing...";
+        status = "Preparing design for printing...";
 
         try {
             // Convert Fabric.js canvas to a regular canvas for printing
             const printCanvas = document.createElement("canvas");
             printCanvas.width = fabricCanvas.getWidth();
             printCanvas.height = fabricCanvas.getHeight();
-
+            
             const ctx = printCanvas.getContext("2d");
+            
+            // Set white background
             ctx.fillStyle = "white";
             ctx.fillRect(0, 0, printCanvas.width, printCanvas.height);
-
-            // Draw Fabric.js canvas content to our print canvas
-            const dataUrl = fabricCanvas.toDataURL({
-                format: "png",
-                quality: 1,
-            });
-
-            const img = new Image();
-            img.onload = async () => {
-                ctx.drawImage(img, 0, 0);
-
-                // Send to printer
-                const options = {
-                    density: density,
+            
+            try {
+                // Draw Fabric.js canvas content to our print canvas
+                const dataUrl = fabricCanvas.toDataURL({
+                    format: "png",
+                    quality: 1,
+                    multiplier: 1
+                });
+                
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                
+                img.onload = async () => {
+                    try {
+                        // Draw the image onto the canvas
+                        ctx.drawImage(img, 0, 0);
+                        
+                        // Update status
+                        status = "Sending to printer...";
+                        
+                        // Send to printer
+                        const options = {
+                            density: density,
+                        };
+                        
+                        await printerClient.printImage(printCanvas, options);
+                        status = "Print completed successfully";
+                    } catch (printError) {
+                        console.error("Printing error:", printError);
+                        status = `Print failed: ${printError.message || "Printing error"}`;
+                    } finally {
+                        isPrinting = false;
+                    }
                 };
-
-                await printerClient.printImage(printCanvas, options);
-                status = "Print completed successfully";
-                isPrinting = false;
-            };
-
-            img.onerror = (error) => {
-                console.error("Image conversion error:", error);
-                status = `Print failed: Image conversion error`;
-                isPrinting = false;
-            };
-
-            img.src = dataUrl;
+                
+                img.onerror = (error) => {
+                    console.error("Image conversion error:", error);
+                    status = `Print failed: Image conversion error`;
+                    isPrinting = false;
+                };
+                
+                // Set source to trigger loading
+                img.src = dataUrl;
+            } catch (canvasError) {
+                throw new Error(`Canvas processing error: ${canvasError.message || "Unknown error"}`);
+            }
         } catch (error) {
             console.error("Print failed:", error);
-            status = `Print failed: ${error.message}`;
+            status = `Print failed: ${error.message || "Unknown error"}`;
             isPrinting = false;
         }
     }
@@ -754,6 +987,8 @@
 
                     <label
                         class="w-full flex items-center px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 cursor-pointer"
+                        for="image-upload"
+                        title="Import an image from your device (JPG, PNG, GIF, etc.)"
                     >
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -771,43 +1006,58 @@
                         </svg>
                         Import Image
                         <input
+                            id="image-upload"
                             type="file"
-                            accept="image/*"
+                            accept="image/jpeg,image/png,image/gif,image/bmp,image/webp"
                             on:change={handleImageUpload}
                             class="hidden"
                         />
                     </label>
 
-                    <label
-                        class="w-full flex items-center px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 cursor-pointer"
-                    >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-4 w-4 mr-2"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
+                    {#if fontAccessSupported}
+                        <button
+                            class="w-full flex items-center px-3 py-2 rounded {fontAccessGranted
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-100 hover:bg-gray-200'}"
+                            on:click={loadSystemFonts}
+                            disabled={fontListLoading}
                         >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M9.269 16.774l5.444-5.444m-4.338-1.106l4.338 4.338"
-                            />
-                        </svg>
-                        Upload Font
-                        <input
-                            type="file"
-                            accept=".ttf,.otf,.woff,.woff2"
-                            on:change={handleFontUpload}
-                            class="hidden"
-                        />
-                    </label>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-4 w-4 mr-2"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                                />
+                            </svg>
+                            {#if fontListLoading}
+                                Loading System Fonts...
+                            {:else if fontAccessGranted}
+                                System Fonts Loaded
+                            {:else}
+                                Load System Fonts
+                            {/if}
+                        </button>
+
+                        {#if fontError}
+                            <div
+                                class="mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs"
+                            >
+                                {fontError}
+                            </div>
+                        {/if}
+                    {/if}
                 </div>
             </div>
 
             <!-- Text Properties (when text is selected) -->
-            {#if selectedObject && selectedObject.type === "i-text"}
+            {#if selectedObject && (selectedObject.type === "i-text" || selectedObject.type === "text")}
                 <div class="mb-6">
                     <h3 class="text-sm font-medium mb-2">Text Properties</h3>
                     <div class="space-y-2">
@@ -817,34 +1067,59 @@
                             >
                             <select
                                 bind:value={selectedObject.fontFamily}
-                                on:change={() => fabricCanvas.renderAll()}
+                                on:change={(e) => {
+                                    currentFontPreview = e.target.value;
+                                    fabricCanvas.renderAll();
+                                }}
                                 class="w-full px-2 py-1 border border-gray-300 rounded text-sm"
                             >
-                                <option value="Arial">Arial</option>
-                                <option value="Times New Roman"
-                                    >Times New Roman</option
-                                >
-                                <option value="Courier New">Courier New</option>
-                                <option value="Georgia">Georgia</option>
-                                <option value="Verdana">Verdana</option>
+                                {#each systemFonts as font}
+                                    <option
+                                        value={font}
+                                        style="font-family: {font};"
+                                        >{font}</option
+                                    >
+                                {/each}
+                                {#if fontAccessSupported && !fontAccessGranted}
+                                    <option disabled>──────────</option>
+                                    <option disabled
+                                        >Click "Load System Fonts" to see more
+                                        fonts</option
+                                    >
+                                {/if}
                             </select>
+                            <div class="mt-2 p-2 border rounded bg-white">
+                                <p
+                                    style="font-family: '{currentFontPreview}', sans-serif; font-size: 16px; line-height: 1.2;"
+                                >
+                                    {currentFontPreview}: The quick brown fox
+                                    jumps over the lazy dog.
+                                </p>
+                            </div>
                         </div>
 
                         <div>
                             <label class="block text-xs text-gray-600 mb-1"
                                 >Font Size</label
                             >
-                            <input
-                                type="range"
-                                bind:value={selectedObject.fontSize}
-                                on:input={() => fabricCanvas.renderAll()}
-                                min="8"
-                                max="72"
-                                class="w-full"
-                            />
-                            <span class="text-xs"
-                                >{selectedObject.fontSize}px</span
-                            >
+                            <div class="flex items-center">
+                                <input
+                                    type="range"
+                                    bind:value={selectedObject.fontSize}
+                                    on:input={() => fabricCanvas.renderAll()}
+                                    min="8"
+                                    max="72"
+                                    class="flex-grow mr-2"
+                                />
+                                <input
+                                    type="number"
+                                    bind:value={selectedObject.fontSize}
+                                    on:change={() => fabricCanvas.renderAll()}
+                                    min="8"
+                                    max="200"
+                                    class="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
+                                />
+                            </div>
                         </div>
 
                         <div>
@@ -858,10 +1133,283 @@
                                 class="w-full h-8 p-0 border"
                             />
                         </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1"
+                                >Text Style</label
+                            >
+                            <div class="flex space-x-2">
+                                <button
+                                    class="border rounded p-1 {selectedObject.fontWeight ===
+                                    'bold'
+                                        ? 'bg-blue-100'
+                                        : 'bg-gray-100'}"
+                                    on:click={() => {
+                                        selectedObject.set({
+                                            fontWeight:
+                                                selectedObject.fontWeight ===
+                                                "bold"
+                                                    ? "normal"
+                                                    : "bold",
+                                        });
+                                        fabricCanvas.renderAll();
+                                    }}
+                                    title="Bold"
+                                >
+                                    <span class="font-bold text-sm">B</span>
+                                </button>
+
+                                <button
+                                    class="border rounded p-1 {selectedObject.fontStyle ===
+                                    'italic'
+                                        ? 'bg-blue-100'
+                                        : 'bg-gray-100'}"
+                                    on:click={() => {
+                                        selectedObject.set({
+                                            fontStyle:
+                                                selectedObject.fontStyle ===
+                                                "italic"
+                                                    ? "normal"
+                                                    : "italic",
+                                        });
+                                        fabricCanvas.renderAll();
+                                    }}
+                                    title="Italic"
+                                >
+                                    <span class="italic text-sm">I</span>
+                                </button>
+
+                                <button
+                                    class="border rounded p-1 {selectedObject.underline
+                                        ? 'bg-blue-100'
+                                        : 'bg-gray-100'}"
+                                    on:click={() => {
+                                        selectedObject.set({
+                                            underline:
+                                                !selectedObject.underline,
+                                        });
+                                        fabricCanvas.renderAll();
+                                    }}
+                                    title="Underline"
+                                >
+                                    <span class="underline text-sm">U</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             {/if}
 
+            <!-- Image Properties (when image is selected) -->
+            {#if selectedObject && selectedObject.type === "image"}
+                <div class="mb-6">
+                    <h3 class="text-sm font-medium mb-2">Image Properties</h3>
+                    <div class="space-y-2">
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Opacity</label>
+                            <div class="flex items-center">
+                                <input 
+                                    type="range" 
+                                    bind:value={selectedObject.opacity} 
+                                    min="0" 
+                                    max="1" 
+                                    step="0.01"
+                                    on:input={() => fabricCanvas.renderAll()}
+                                    class="flex-grow mr-2"
+                                />
+                                <span class="text-xs w-8 text-center">{Math.round(selectedObject.opacity * 100)}%</span>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Filters</label>
+                            <div class="grid grid-cols-2 gap-1">
+                                <button 
+                                    on:click={() => {
+                                        if (selectedObject && selectedObject.type === "image") {
+                                            try {
+                                                // Clear existing filters of same type
+                                                selectedObject.filters = selectedObject.filters.filter(
+                                                    f => !(f instanceof fabric.Image.filters.Grayscale)
+                                                );
+                                                // Add grayscale filter
+                                                selectedObject.filters.push(new fabric.Image.filters.Grayscale());
+                                                selectedObject.applyFilters();
+                                                fabricCanvas.renderAll();
+                                            } catch (error) {
+                                                console.error("Error applying filter:", error);
+                                                status = "Error applying filter";
+                                            }
+                                        }
+                                    }}
+                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    Grayscale
+                                </button>
+                                
+                                <button 
+                                    on:click={() => {
+                                        if (selectedObject && selectedObject.type === "image") {
+                                            try {
+                                                // Clear existing filters of same type
+                                                selectedObject.filters = selectedObject.filters.filter(
+                                                    f => !(f instanceof fabric.Image.filters.Invert)
+                                                );
+                                                // Add invert filter
+                                                selectedObject.filters.push(new fabric.Image.filters.Invert());
+                                                selectedObject.applyFilters();
+                                                fabricCanvas.renderAll();
+                                            } catch (error) {
+                                                console.error("Error applying filter:", error);
+                                                status = "Error applying filter";
+                                            }
+                                        }
+                                    }}
+                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    Invert
+                                </button>
+                                
+                                <button 
+                                    on:click={() => {
+                                        if (selectedObject && selectedObject.type === "image") {
+                                            try {
+                                                // Clear existing filters of same type
+                                                selectedObject.filters = selectedObject.filters.filter(
+                                                    f => !(f instanceof fabric.Image.filters.Brightness)
+                                                );
+                                                // Add brightness filter
+                                                selectedObject.filters.push(new fabric.Image.filters.Brightness({brightness: 0.1}));
+                                                selectedObject.applyFilters();
+                                                fabricCanvas.renderAll();
+                                            } catch (error) {
+                                                console.error("Error applying filter:", error);
+                                                status = "Error applying filter";
+                                            }
+                                        }
+                                    }}
+                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    Brighten
+                                </button>
+                                
+                                <button 
+                                    on:click={() => {
+                                        if (selectedObject && selectedObject.type === "image") {
+                                            try {
+                                                // Clear existing filters of same type
+                                                selectedObject.filters = selectedObject.filters.filter(
+                                                    f => !(f instanceof fabric.Image.filters.Contrast)
+                                                );
+                                                // Add contrast filter
+                                                selectedObject.filters.push(new fabric.Image.filters.Contrast({contrast: 0.1}));
+                                                selectedObject.applyFilters();
+                                                fabricCanvas.renderAll();
+                                            } catch (error) {
+                                                console.error("Error applying filter:", error);
+                                                status = "Error applying filter";
+                                            }
+                                        }
+                                    }}
+                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    Contrast
+                                </button>
+                            </div>
+                            
+                            <button 
+                                on:click={() => {
+                                    if (selectedObject && selectedObject.type === "image") {
+                                        try {
+                                            // Clear all filters
+                                            selectedObject.filters = [];
+                                            selectedObject.applyFilters();
+                                            fabricCanvas.renderAll();
+                                        } catch (error) {
+                                            console.error("Error resetting filters:", error);
+                                            status = "Error resetting filters";
+                                        }
+                                    }
+                                }}
+                                class="w-full mt-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                            >
+                                Reset Filters
+                            </button>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Rotation</label>
+                            <div class="grid grid-cols-3 gap-1">
+                                <button 
+                                    on:click={() => {
+                                        if (selectedObject && selectedObject.type === "image") {
+                                            selectedObject.rotate((selectedObject.angle || 0) - 90);
+                                            fabricCanvas.renderAll();
+                                        }
+                                    }}
+                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    ↺ 90°
+                                </button>
+                                
+                                <button 
+                                    on:click={() => {
+                                        if (selectedObject && selectedObject.type === "image") {
+                                            selectedObject.rotate((selectedObject.angle || 0) + 90);
+                                            fabricCanvas.renderAll();
+                                        }
+                                    }}
+                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    ↻ 90°
+                                </button>
+                                
+                                <button 
+                                    on:click={() => {
+                                        if (selectedObject && selectedObject.type === "image") {
+                                            selectedObject.rotate(0);
+                                            fabricCanvas.renderAll();
+                                        }
+                                    }}
+                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    Reset
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Flip</label>
+                            <div class="grid grid-cols-2 gap-1">
+                                <button 
+                                    on:click={() => {
+                                        if (selectedObject && selectedObject.type === "image") {
+                                            selectedObject.set('flipX', !selectedObject.flipX);
+                                            fabricCanvas.renderAll();
+                                        }
+                                    }}
+                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    Horizontal
+                                </button>
+                                
+                                <button 
+                                    on:click={() => {
+                                        if (selectedObject && selectedObject.type === "image") {
+                                            selectedObject.set('flipY', !selectedObject.flipY);
+                                            fabricCanvas.renderAll();
+                                        }
+                                    }}
+                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    Vertical
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+            
             <!-- Object Properties (when any object is selected) -->
             {#if selectedObject}
                 <div class="mb-6">
