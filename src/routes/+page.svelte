@@ -14,7 +14,7 @@
     let isConnecting = false;
     let isPrinting = false;
     let status = "Disconnected";
-    let printerModel = "b21";
+    let printerModel = "b1";
     let density = 3;
 
     // Canvas state
@@ -71,10 +71,13 @@
         fabricCanvas.freeDrawingBrush.strokeLineJoin = "round";
         fabricCanvas.renderAll();
     }
-    
+
     // Update component state when selection changes
     $: if (selectedObject) {
-        if (selectedObject.type === 'i-text' || selectedObject.type === 'text') {
+        if (
+            selectedObject.type === "i-text" ||
+            selectedObject.type === "text"
+        ) {
             fontFamily = selectedObject.fontFamily;
             fontSize = selectedObject.fontSize;
             textColor = selectedObject.fill;
@@ -92,42 +95,42 @@
             maxWidth: 384,
             maxDensity: 5,
             supportedWidths: [384],
-            maxWidthMM: 48,
+            maxWidthMM: 50,
         },
         b18: {
             name: "B18",
             maxWidth: 384,
             maxDensity: 3,
-            supportedWidths: [384],
-            maxWidthMM: 48,
+            supportedWidths: [96],
+            maxWidthMM: 14,
         },
         b21: {
             name: "B21",
             maxWidth: 384,
             maxDensity: 5,
             supportedWidths: [384],
-            maxWidthMM: 48,
+            maxWidthMM: 50,
         },
         d11: {
             name: "D11",
             maxWidth: 96,
             maxDensity: 3,
             supportedWidths: [96],
-            maxWidthMM: 12,
+            maxWidthMM: 14,
         },
         d110: {
             name: "D110",
             maxWidth: 96,
             maxDensity: 3,
             supportedWidths: [96],
-            maxWidthMM: 12,
+            maxWidthMM: 14,
         },
         b203: {
             name: "B203",
-            maxWidth: 576,
+            maxWidth: 384,
             maxDensity: 5,
-            supportedWidths: [576, 384, 288],
-            maxWidthMM: 72,
+            supportedWidths: [384],
+            maxWidthMM: 50,
         },
     };
 
@@ -157,6 +160,7 @@
             preserveObjectStacking: true,
             selection: true,
             isDrawingMode: false,
+            stopContextMenu: true,
         });
 
         // Initialize drawing brush - explicitly create the brush to ensure it exists
@@ -310,59 +314,63 @@
     // Canvas operation functions
     function toggleDrawMode() {
         if (!fabricCanvas) return;
-    
+
         try {
             // Toggle drawing mode
             fabricCanvas.isDrawingMode = !fabricCanvas.isDrawingMode;
             drawingMode = fabricCanvas.isDrawingMode;
-        
+
             if (drawingMode) {
                 // Ensure we have a brush and properly configure it
                 if (!fabricCanvas.freeDrawingBrush) {
                     try {
-                        fabricCanvas.freeDrawingBrush = new fabric.PencilBrush(fabricCanvas);
+                        fabricCanvas.freeDrawingBrush = new fabric.PencilBrush(
+                            fabricCanvas,
+                        );
                     } catch (e) {
                         console.error("Error creating PencilBrush:", e);
                         // Try alternative approach
-                        fabricCanvas.freeDrawingBrush = fabricCanvas._createPencilBrush ? 
-                            fabricCanvas._createPencilBrush() : null;
-                        
+                        fabricCanvas.freeDrawingBrush =
+                            fabricCanvas._createPencilBrush
+                                ? fabricCanvas._createPencilBrush()
+                                : null;
+
                         if (!fabricCanvas.freeDrawingBrush) {
                             throw new Error("Could not create drawing brush");
                         }
                     }
                 }
-                
+
                 if (fabricCanvas.freeDrawingBrush) {
                     // Configure the brush with current settings
                     fabricCanvas.freeDrawingBrush.width = penSize;
                     fabricCanvas.freeDrawingBrush.color = penColor;
-                    fabricCanvas.freeDrawingBrush.strokeLineCap = 'round';
-                    fabricCanvas.freeDrawingBrush.strokeLineJoin = 'round';
+                    fabricCanvas.freeDrawingBrush.strokeLineCap = "round";
+                    fabricCanvas.freeDrawingBrush.strokeLineJoin = "round";
                 }
-                
+
                 // Disable selection while in drawing mode
                 fabricCanvas.selection = false;
-                
+
                 // Show cursor as crosshair in drawing mode
                 if (fabricCanvas.upperCanvasEl) {
-                    fabricCanvas.upperCanvasEl.style.cursor = 'crosshair';
+                    fabricCanvas.upperCanvasEl.style.cursor = "crosshair";
                 }
             } else {
                 // Re-enable selection when exiting drawing mode
                 fabricCanvas.selection = true;
-                
+
                 // Reset cursor
                 if (fabricCanvas.upperCanvasEl) {
-                    fabricCanvas.upperCanvasEl.style.cursor = 'default';
+                    fabricCanvas.upperCanvasEl.style.cursor = "default";
                 }
             }
-        
+
             // Ensure canvas receives focus for immediate drawing
             if (drawingMode && fabricCanvas.upperCanvasEl) {
                 fabricCanvas.upperCanvasEl.focus();
             }
-            
+
             // Refresh canvas
             fabricCanvas.renderAll();
         } catch (error) {
@@ -399,19 +407,26 @@
         if (!fabricCanvas || !event.target.files[0]) return;
 
         const file = event.target.files[0];
-        
+
         // Validate file size
-        if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        if (file.size > 10 * 1024 * 1024) {
+            // 10MB limit
             status = "Error: Image size exceeds 10MB limit";
-            event.target.value = '';
+            event.target.value = "";
             return;
         }
-        
+
         // Validate file type
-        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
+        const validTypes = [
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/bmp",
+            "image/webp",
+        ];
         if (!validTypes.includes(file.type)) {
             status = `Error: Unsupported image format (${file.type})`;
-            event.target.value = '';
+            event.target.value = "";
             return;
         }
 
@@ -422,14 +437,14 @@
 
         reader.onload = function (f) {
             const data = f.target.result;
-            
+
             // Create an HTML image element to get accurate dimensions
             const imgEl = new Image();
-            
+
             // Set crossOrigin to anonymous to avoid CORS issues
-            imgEl.crossOrigin = 'anonymous';
-            
-            imgEl.onload = function() {
+            imgEl.crossOrigin = "anonymous";
+
+            imgEl.onload = function () {
                 try {
                     // Create fabric image from element to ensure proper rendering
                     const fabricImage = new fabric.Image(imgEl, {
@@ -437,20 +452,23 @@
                         originY: "center",
                         left: fabricCanvas.getWidth() / 2,
                         top: fabricCanvas.getHeight() / 2,
-                        crossOrigin: 'anonymous'
+                        crossOrigin: "anonymous",
                     });
-                    
+
                     // Initialize filters array to ensure it exists
                     fabricImage.filters = [];
-                    
+
                     // Scale down large images
                     const maxWidth = fabricCanvas.getWidth() * 0.8;
                     const maxHeight = fabricCanvas.getHeight() * 0.8;
 
-                    if (fabricImage.width > maxWidth || fabricImage.height > maxHeight) {
+                    if (
+                        fabricImage.width > maxWidth ||
+                        fabricImage.height > maxHeight
+                    ) {
                         const scale = Math.min(
                             maxWidth / fabricImage.width,
-                            maxHeight / fabricImage.height
+                            maxHeight / fabricImage.height,
                         );
                         fabricImage.scale(scale);
                     }
@@ -459,36 +477,38 @@
                     fabricCanvas.add(fabricImage);
                     fabricCanvas.setActiveObject(fabricImage);
                     fabricCanvas.renderAll();
-                    
+
                     // Update selected object
                     selectedObject = fabricImage;
-                    
+
                     // Reset status
-                    status = isConnected ? `Connected - ${currentConfig?.name || ""}` : "Disconnected";
+                    status = isConnected
+                        ? `Connected - ${currentConfig?.name || ""}`
+                        : "Disconnected";
                 } catch (error) {
                     console.error("Error creating image:", error);
                     status = `Error loading image: ${error.message || "Unknown error"}`;
                 }
             };
-            
-            imgEl.onerror = function(e) {
+
+            imgEl.onerror = function (e) {
                 console.error("Image loading error:", e);
                 status = "Error loading image: Invalid or corrupted image file";
             };
-            
+
             // Set source to trigger load
             imgEl.src = data;
         };
-        
-        reader.onerror = function(e) {
+
+        reader.onerror = function (e) {
             console.error("File reading error:", e);
             status = "Error reading file";
         };
 
         reader.readAsDataURL(file);
-        
+
         // Clear the input value so the same file can be uploaded again
-        event.target.value = '';
+        event.target.value = "";
     }
 
     function alignObject(alignType) {
@@ -698,37 +718,37 @@
             const printCanvas = document.createElement("canvas");
             printCanvas.width = fabricCanvas.getWidth();
             printCanvas.height = fabricCanvas.getHeight();
-            
+
             const ctx = printCanvas.getContext("2d");
-            
+
             // Set white background
             ctx.fillStyle = "white";
             ctx.fillRect(0, 0, printCanvas.width, printCanvas.height);
-            
+
             try {
                 // Draw Fabric.js canvas content to our print canvas
                 const dataUrl = fabricCanvas.toDataURL({
                     format: "png",
                     quality: 1,
-                    multiplier: 1
+                    multiplier: 1,
                 });
-                
+
                 const img = new Image();
                 img.crossOrigin = "anonymous";
-                
+
                 img.onload = async () => {
                     try {
                         // Draw the image onto the canvas
                         ctx.drawImage(img, 0, 0);
-                        
+
                         // Update status
                         status = "Sending to printer...";
-                        
+
                         // Send to printer
                         const options = {
                             density: density,
                         };
-                        
+
                         await printerClient.printImage(printCanvas, options);
                         status = "Print completed successfully";
                     } catch (printError) {
@@ -738,17 +758,19 @@
                         isPrinting = false;
                     }
                 };
-                
+
                 img.onerror = (error) => {
                     console.error("Image conversion error:", error);
                     status = `Print failed: Image conversion error`;
                     isPrinting = false;
                 };
-                
+
                 // Set source to trigger loading
                 img.src = dataUrl;
             } catch (canvasError) {
-                throw new Error(`Canvas processing error: ${canvasError.message || "Unknown error"}`);
+                throw new Error(
+                    `Canvas processing error: ${canvasError.message || "Unknown error"}`,
+                );
             }
         } catch (error) {
             console.error("Print failed:", error);
@@ -773,7 +795,7 @@
     }
 </script>
 
-<div class="min-h-screen flex flex-col bg-gray-100">
+<div class="h-screen flex flex-col bg-gray-100 overflow-hidden">
     <!-- Top Bar - Printer Connection -->
     <div class="bg-white shadow-md p-4">
         <div
@@ -835,9 +857,13 @@
     </div>
 
     <!-- Main Content Area -->
-    <div class="flex-grow flex flex-col md:flex-row overflow-hidden">
+    <div
+        class="flex-grow flex flex-col md:flex-row overflow-hidden h-[calc(100vh-128px)]"
+    >
         <!-- Left Sidebar - Tools -->
-        <div class="w-full md:w-64 bg-white shadow-md p-4 overflow-y-auto">
+        <div
+            class="w-full md:w-64 bg-white shadow-md p-4 overflow-y-auto flex flex-col"
+        >
             <h2 class="font-semibold mb-4">Design Tools</h2>
 
             <!-- Canvas Size Controls -->
@@ -1056,509 +1082,641 @@
                 </div>
             </div>
 
-            <!-- Text Properties (when text is selected) -->
-            {#if selectedObject && (selectedObject.type === "i-text" || selectedObject.type === "text")}
-                <div class="mb-6">
-                    <h3 class="text-sm font-medium mb-2">Text Properties</h3>
-                    <div class="space-y-2">
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1"
-                                >Font Family</label
-                            >
-                            <select
-                                bind:value={selectedObject.fontFamily}
-                                on:change={(e) => {
-                                    currentFontPreview = e.target.value;
-                                    fabricCanvas.renderAll();
-                                }}
-                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                            >
-                                {#each systemFonts as font}
-                                    <option
-                                        value={font}
-                                        style="font-family: {font};"
-                                        >{font}</option
-                                    >
-                                {/each}
-                                {#if fontAccessSupported && !fontAccessGranted}
-                                    <option disabled>──────────</option>
-                                    <option disabled
-                                        >Click "Load System Fonts" to see more
-                                        fonts</option
-                                    >
-                                {/if}
-                            </select>
-                            <div class="mt-2 p-2 border rounded bg-white">
-                                <p
-                                    style="font-family: '{currentFontPreview}', sans-serif; font-size: 16px; line-height: 1.2;"
+            <!-- Properties Panel Container - Fixed height with scrolling -->
+            <div
+                class="overflow-y-auto mt-3 border-t pt-3"
+                style="flex: 1; min-height: 0;"
+            >
+                <!-- Text Properties (when text is selected) -->
+                {#if selectedObject && (selectedObject.type === "i-text" || selectedObject.type === "text")}
+                    <div class="mb-6">
+                        <h3 class="text-sm font-medium mb-2">
+                            Text Properties
+                        </h3>
+                        <div class="space-y-2">
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Font Family</label
                                 >
-                                    {currentFontPreview}: The quick brown fox
-                                    jumps over the lazy dog.
-                                </p>
+                                <select
+                                    bind:value={selectedObject.fontFamily}
+                                    on:change={(e) => {
+                                        currentFontPreview = e.target.value;
+                                        fabricCanvas.renderAll();
+                                    }}
+                                    class="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                >
+                                    {#each systemFonts as font}
+                                        <option
+                                            value={font}
+                                            style="font-family: {font};"
+                                            >{font}</option
+                                        >
+                                    {/each}
+                                    {#if fontAccessSupported && !fontAccessGranted}
+                                        <option disabled>──────────</option>
+                                        <option disabled
+                                            >Click "Load System Fonts" to see
+                                            more fonts</option
+                                        >
+                                    {/if}
+                                </select>
+                                <div
+                                    class="mt-2 p-2 border border-gray-300 rounded bg-white"
+                                >
+                                    <p
+                                        style="font-family: '{currentFontPreview}', sans-serif; font-size: 16px; line-height: 1.2;"
+                                    >
+                                        {currentFontPreview}: The quick brown
+                                        fox jumps over the lazy dog.
+                                    </p>
+                                </div>
                             </div>
-                        </div>
 
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1"
-                                >Font Size</label
-                            >
-                            <div class="flex items-center">
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Font Size</label
+                                >
+                                <div class="flex items-center">
+                                    <input
+                                        type="range"
+                                        bind:value={selectedObject.fontSize}
+                                        on:input={() =>
+                                            fabricCanvas.renderAll()}
+                                        min="8"
+                                        max="72"
+                                        class="flex-grow mr-2"
+                                    />
+                                    <input
+                                        type="number"
+                                        bind:value={selectedObject.fontSize}
+                                        on:change={() =>
+                                            fabricCanvas.renderAll()}
+                                        min="8"
+                                        max="200"
+                                        class="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Text Color</label
+                                >
                                 <input
-                                    type="range"
-                                    bind:value={selectedObject.fontSize}
+                                    type="color"
+                                    bind:value={selectedObject.fill}
                                     on:input={() => fabricCanvas.renderAll()}
-                                    min="8"
-                                    max="72"
-                                    class="flex-grow mr-2"
-                                />
-                                <input
-                                    type="number"
-                                    bind:value={selectedObject.fontSize}
-                                    on:change={() => fabricCanvas.renderAll()}
-                                    min="8"
-                                    max="200"
-                                    class="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
+                                    class="w-full h-8 p-0 border"
                                 />
                             </div>
-                        </div>
 
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1"
-                                >Text Color</label
-                            >
-                            <input
-                                type="color"
-                                bind:value={selectedObject.fill}
-                                on:input={() => fabricCanvas.renderAll()}
-                                class="w-full h-8 p-0 border"
-                            />
-                        </div>
-
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1"
-                                >Text Style</label
-                            >
-                            <div class="flex space-x-2">
-                                <button
-                                    class="border rounded p-1 {selectedObject.fontWeight ===
-                                    'bold'
-                                        ? 'bg-blue-100'
-                                        : 'bg-gray-100'}"
-                                    on:click={() => {
-                                        selectedObject.set({
-                                            fontWeight:
-                                                selectedObject.fontWeight ===
-                                                "bold"
-                                                    ? "normal"
-                                                    : "bold",
-                                        });
-                                        fabricCanvas.renderAll();
-                                    }}
-                                    title="Bold"
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Text Style</label
                                 >
-                                    <span class="font-bold text-sm">B</span>
-                                </button>
+                                <div class="flex space-x-2">
+                                    <button
+                                        class="border rounded p-1 {selectedObject.fontWeight ===
+                                        'bold'
+                                            ? 'bg-blue-100'
+                                            : 'bg-gray-100'}"
+                                        on:click={() => {
+                                            selectedObject.set({
+                                                fontWeight:
+                                                    selectedObject.fontWeight ===
+                                                    "bold"
+                                                        ? "normal"
+                                                        : "bold",
+                                            });
+                                            fabricCanvas.renderAll();
+                                        }}
+                                        title="Bold"
+                                    >
+                                        <span class="font-bold text-sm">B</span>
+                                    </button>
 
-                                <button
-                                    class="border rounded p-1 {selectedObject.fontStyle ===
-                                    'italic'
-                                        ? 'bg-blue-100'
-                                        : 'bg-gray-100'}"
-                                    on:click={() => {
-                                        selectedObject.set({
-                                            fontStyle:
-                                                selectedObject.fontStyle ===
-                                                "italic"
-                                                    ? "normal"
-                                                    : "italic",
-                                        });
-                                        fabricCanvas.renderAll();
-                                    }}
-                                    title="Italic"
-                                >
-                                    <span class="italic text-sm">I</span>
-                                </button>
+                                    <button
+                                        class="border rounded p-1 {selectedObject.fontStyle ===
+                                        'italic'
+                                            ? 'bg-blue-100'
+                                            : 'bg-gray-100'}"
+                                        on:click={() => {
+                                            selectedObject.set({
+                                                fontStyle:
+                                                    selectedObject.fontStyle ===
+                                                    "italic"
+                                                        ? "normal"
+                                                        : "italic",
+                                            });
+                                            fabricCanvas.renderAll();
+                                        }}
+                                        title="Italic"
+                                    >
+                                        <span class="italic text-sm">I</span>
+                                    </button>
 
-                                <button
-                                    class="border rounded p-1 {selectedObject.underline
-                                        ? 'bg-blue-100'
-                                        : 'bg-gray-100'}"
-                                    on:click={() => {
-                                        selectedObject.set({
-                                            underline:
-                                                !selectedObject.underline,
-                                        });
-                                        fabricCanvas.renderAll();
-                                    }}
-                                    title="Underline"
-                                >
-                                    <span class="underline text-sm">U</span>
-                                </button>
+                                    <button
+                                        class="border rounded p-1 {selectedObject.underline
+                                            ? 'bg-blue-100'
+                                            : 'bg-gray-100'}"
+                                        on:click={() => {
+                                            selectedObject.set({
+                                                underline:
+                                                    !selectedObject.underline,
+                                            });
+                                            fabricCanvas.renderAll();
+                                        }}
+                                        title="Underline"
+                                    >
+                                        <span class="underline text-sm">U</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            {/if}
+                {/if}
 
-            <!-- Image Properties (when image is selected) -->
-            {#if selectedObject && selectedObject.type === "image"}
-                <div class="mb-6">
-                    <h3 class="text-sm font-medium mb-2">Image Properties</h3>
-                    <div class="space-y-2">
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Opacity</label>
-                            <div class="flex items-center">
-                                <input 
-                                    type="range" 
-                                    bind:value={selectedObject.opacity} 
-                                    min="0" 
-                                    max="1" 
-                                    step="0.01"
-                                    on:input={() => fabricCanvas.renderAll()}
-                                    class="flex-grow mr-2"
-                                />
-                                <span class="text-xs w-8 text-center">{Math.round(selectedObject.opacity * 100)}%</span>
+                <!-- Image Properties (when image is selected) -->
+                {#if selectedObject && selectedObject.type === "image"}
+                    <div class="mb-6">
+                        <h3 class="text-sm font-medium mb-2">
+                            Image Properties
+                        </h3>
+                        <div class="space-y-2">
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Opacity</label
+                                >
+                                <div class="flex items-center">
+                                    <input
+                                        type="range"
+                                        bind:value={selectedObject.opacity}
+                                        min="0"
+                                        max="1"
+                                        step="0.01"
+                                        on:input={() =>
+                                            fabricCanvas.renderAll()}
+                                        class="flex-grow mr-2"
+                                    />
+                                    <span class="text-xs w-8 text-center"
+                                        >{Math.round(
+                                            selectedObject.opacity * 100,
+                                        )}%</span
+                                    >
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Filters</label
+                                >
+                                <div class="grid grid-cols-2 gap-1">
+                                    <button
+                                        on:click={() => {
+                                            if (
+                                                selectedObject &&
+                                                selectedObject.type === "image"
+                                            ) {
+                                                try {
+                                                    // Clear existing filters of same type
+                                                    selectedObject.filters =
+                                                        selectedObject.filters.filter(
+                                                            (f) =>
+                                                                !(
+                                                                    f instanceof
+                                                                    fabric.Image
+                                                                        .filters
+                                                                        .Grayscale
+                                                                ),
+                                                        );
+                                                    // Add grayscale filter
+                                                    selectedObject.filters.push(
+                                                        new fabric.Image.filters.Grayscale(),
+                                                    );
+                                                    selectedObject.applyFilters();
+                                                    fabricCanvas.renderAll();
+                                                } catch (error) {
+                                                    console.error(
+                                                        "Error applying filter:",
+                                                        error,
+                                                    );
+                                                    status =
+                                                        "Error applying filter";
+                                                }
+                                            }
+                                        }}
+                                        class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                    >
+                                        Grayscale
+                                    </button>
+
+                                    <button
+                                        on:click={() => {
+                                            if (
+                                                selectedObject &&
+                                                selectedObject.type === "image"
+                                            ) {
+                                                try {
+                                                    // Clear existing filters of same type
+                                                    selectedObject.filters =
+                                                        selectedObject.filters.filter(
+                                                            (f) =>
+                                                                !(
+                                                                    f instanceof
+                                                                    fabric.Image
+                                                                        .filters
+                                                                        .Invert
+                                                                ),
+                                                        );
+                                                    // Add invert filter
+                                                    selectedObject.filters.push(
+                                                        new fabric.Image.filters.Invert(),
+                                                    );
+                                                    selectedObject.applyFilters();
+                                                    fabricCanvas.renderAll();
+                                                } catch (error) {
+                                                    console.error(
+                                                        "Error applying filter:",
+                                                        error,
+                                                    );
+                                                    status =
+                                                        "Error applying filter";
+                                                }
+                                            }
+                                        }}
+                                        class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                    >
+                                        Invert
+                                    </button>
+
+                                    <button
+                                        on:click={() => {
+                                            if (
+                                                selectedObject &&
+                                                selectedObject.type === "image"
+                                            ) {
+                                                try {
+                                                    // Clear existing filters of same type
+                                                    selectedObject.filters =
+                                                        selectedObject.filters.filter(
+                                                            (f) =>
+                                                                !(
+                                                                    f instanceof
+                                                                    fabric.Image
+                                                                        .filters
+                                                                        .Brightness
+                                                                ),
+                                                        );
+                                                    // Add brightness filter
+                                                    selectedObject.filters.push(
+                                                        new fabric.Image.filters.Brightness(
+                                                            { brightness: 0.1 },
+                                                        ),
+                                                    );
+                                                    selectedObject.applyFilters();
+                                                    fabricCanvas.renderAll();
+                                                } catch (error) {
+                                                    console.error(
+                                                        "Error applying filter:",
+                                                        error,
+                                                    );
+                                                    status =
+                                                        "Error applying filter";
+                                                }
+                                            }
+                                        }}
+                                        class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                    >
+                                        Brighten
+                                    </button>
+
+                                    <button
+                                        on:click={() => {
+                                            if (
+                                                selectedObject &&
+                                                selectedObject.type === "image"
+                                            ) {
+                                                try {
+                                                    // Clear existing filters of same type
+                                                    selectedObject.filters =
+                                                        selectedObject.filters.filter(
+                                                            (f) =>
+                                                                !(
+                                                                    f instanceof
+                                                                    fabric.Image
+                                                                        .filters
+                                                                        .Contrast
+                                                                ),
+                                                        );
+                                                    // Add contrast filter
+                                                    selectedObject.filters.push(
+                                                        new fabric.Image.filters.Contrast(
+                                                            { contrast: 0.1 },
+                                                        ),
+                                                    );
+                                                    selectedObject.applyFilters();
+                                                    fabricCanvas.renderAll();
+                                                } catch (error) {
+                                                    console.error(
+                                                        "Error applying filter:",
+                                                        error,
+                                                    );
+                                                    status =
+                                                        "Error applying filter";
+                                                }
+                                            }
+                                        }}
+                                        class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                    >
+                                        Contrast
+                                    </button>
+                                </div>
+
+                                <button
+                                    on:click={() => {
+                                        if (
+                                            selectedObject &&
+                                            selectedObject.type === "image"
+                                        ) {
+                                            try {
+                                                // Clear all filters
+                                                selectedObject.filters = [];
+                                                selectedObject.applyFilters();
+                                                fabricCanvas.renderAll();
+                                            } catch (error) {
+                                                console.error(
+                                                    "Error resetting filters:",
+                                                    error,
+                                                );
+                                                status =
+                                                    "Error resetting filters";
+                                            }
+                                        }
+                                    }}
+                                    class="w-full mt-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                >
+                                    Reset Filters
+                                </button>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Rotation</label
+                                >
+                                <div class="grid grid-cols-3 gap-1">
+                                    <button
+                                        on:click={() => {
+                                            if (
+                                                selectedObject &&
+                                                selectedObject.type === "image"
+                                            ) {
+                                                selectedObject.rotate(
+                                                    (selectedObject.angle ||
+                                                        0) - 90,
+                                                );
+                                                fabricCanvas.renderAll();
+                                            }
+                                        }}
+                                        class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                    >
+                                        ↺ 90°
+                                    </button>
+
+                                    <button
+                                        on:click={() => {
+                                            if (
+                                                selectedObject &&
+                                                selectedObject.type === "image"
+                                            ) {
+                                                selectedObject.rotate(
+                                                    (selectedObject.angle ||
+                                                        0) + 90,
+                                                );
+                                                fabricCanvas.renderAll();
+                                            }
+                                        }}
+                                        class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                    >
+                                        ↻ 90°
+                                    </button>
+
+                                    <button
+                                        on:click={() => {
+                                            if (
+                                                selectedObject &&
+                                                selectedObject.type === "image"
+                                            ) {
+                                                selectedObject.rotate(0);
+                                                fabricCanvas.renderAll();
+                                            }
+                                        }}
+                                        class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                    >
+                                        Reset
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Flip</label
+                                >
+                                <div class="grid grid-cols-2 gap-1">
+                                    <button
+                                        on:click={() => {
+                                            if (
+                                                selectedObject &&
+                                                selectedObject.type === "image"
+                                            ) {
+                                                selectedObject.set(
+                                                    "flipX",
+                                                    !selectedObject.flipX,
+                                                );
+                                                fabricCanvas.renderAll();
+                                            }
+                                        }}
+                                        class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                    >
+                                        Horizontal
+                                    </button>
+
+                                    <button
+                                        on:click={() => {
+                                            if (
+                                                selectedObject &&
+                                                selectedObject.type === "image"
+                                            ) {
+                                                selectedObject.set(
+                                                    "flipY",
+                                                    !selectedObject.flipY,
+                                                );
+                                                fabricCanvas.renderAll();
+                                            }
+                                        }}
+                                        class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                    >
+                                        Vertical
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Filters</label>
-                            <div class="grid grid-cols-2 gap-1">
-                                <button 
-                                    on:click={() => {
-                                        if (selectedObject && selectedObject.type === "image") {
-                                            try {
-                                                // Clear existing filters of same type
-                                                selectedObject.filters = selectedObject.filters.filter(
-                                                    f => !(f instanceof fabric.Image.filters.Grayscale)
-                                                );
-                                                // Add grayscale filter
-                                                selectedObject.filters.push(new fabric.Image.filters.Grayscale());
-                                                selectedObject.applyFilters();
-                                                fabricCanvas.renderAll();
-                                            } catch (error) {
-                                                console.error("Error applying filter:", error);
-                                                status = "Error applying filter";
-                                            }
-                                        }
-                                    }}
-                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                                >
-                                    Grayscale
-                                </button>
-                                
-                                <button 
-                                    on:click={() => {
-                                        if (selectedObject && selectedObject.type === "image") {
-                                            try {
-                                                // Clear existing filters of same type
-                                                selectedObject.filters = selectedObject.filters.filter(
-                                                    f => !(f instanceof fabric.Image.filters.Invert)
-                                                );
-                                                // Add invert filter
-                                                selectedObject.filters.push(new fabric.Image.filters.Invert());
-                                                selectedObject.applyFilters();
-                                                fabricCanvas.renderAll();
-                                            } catch (error) {
-                                                console.error("Error applying filter:", error);
-                                                status = "Error applying filter";
-                                            }
-                                        }
-                                    }}
-                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                                >
-                                    Invert
-                                </button>
-                                
-                                <button 
-                                    on:click={() => {
-                                        if (selectedObject && selectedObject.type === "image") {
-                                            try {
-                                                // Clear existing filters of same type
-                                                selectedObject.filters = selectedObject.filters.filter(
-                                                    f => !(f instanceof fabric.Image.filters.Brightness)
-                                                );
-                                                // Add brightness filter
-                                                selectedObject.filters.push(new fabric.Image.filters.Brightness({brightness: 0.1}));
-                                                selectedObject.applyFilters();
-                                                fabricCanvas.renderAll();
-                                            } catch (error) {
-                                                console.error("Error applying filter:", error);
-                                                status = "Error applying filter";
-                                            }
-                                        }
-                                    }}
-                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                                >
-                                    Brighten
-                                </button>
-                                
-                                <button 
-                                    on:click={() => {
-                                        if (selectedObject && selectedObject.type === "image") {
-                                            try {
-                                                // Clear existing filters of same type
-                                                selectedObject.filters = selectedObject.filters.filter(
-                                                    f => !(f instanceof fabric.Image.filters.Contrast)
-                                                );
-                                                // Add contrast filter
-                                                selectedObject.filters.push(new fabric.Image.filters.Contrast({contrast: 0.1}));
-                                                selectedObject.applyFilters();
-                                                fabricCanvas.renderAll();
-                                            } catch (error) {
-                                                console.error("Error applying filter:", error);
-                                                status = "Error applying filter";
-                                            }
-                                        }
-                                    }}
-                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                                >
-                                    Contrast
-                                </button>
-                            </div>
-                            
-                            <button 
-                                on:click={() => {
-                                    if (selectedObject && selectedObject.type === "image") {
-                                        try {
-                                            // Clear all filters
-                                            selectedObject.filters = [];
-                                            selectedObject.applyFilters();
-                                            fabricCanvas.renderAll();
-                                        } catch (error) {
-                                            console.error("Error resetting filters:", error);
-                                            status = "Error resetting filters";
-                                        }
-                                    }
-                                }}
-                                class="w-full mt-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                    </div>
+                {/if}
+
+                <!-- Object Properties (when any object is selected) -->
+                {#if selectedObject}
+                    <div class="mb-6">
+                        <h3 class="text-sm font-medium mb-2">Alignment</h3>
+                        <div class="grid grid-cols-3 gap-1 mb-2">
+                            <button
+                                aria-label="Align Left"
+                                on:click={() => alignObject("left")}
+                                class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
                             >
-                                Reset Filters
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        fill-rule="evenodd"
+                                        d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                                        clip-rule="evenodd"
+                                    />
+                                </svg>
+                            </button>
+                            <button
+                                aria-label="Center Horizontally"
+                                on:click={() => alignObject("center-h")}
+                                class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        fill-rule="evenodd"
+                                        d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                                        clip-rule="evenodd"
+                                    />
+                                </svg>
+                            </button>
+                            <button
+                                aria-label="Align Right"
+                                on:click={() => alignObject("right")}
+                                class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        fill-rule="evenodd"
+                                        d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM9 10a1 1 0 011-1h6a1 1 0 110 2h-6a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                                        clip-rule="evenodd"
+                                    />
+                                </svg>
                             </button>
                         </div>
-                        
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Rotation</label>
-                            <div class="grid grid-cols-3 gap-1">
-                                <button 
-                                    on:click={() => {
-                                        if (selectedObject && selectedObject.type === "image") {
-                                            selectedObject.rotate((selectedObject.angle || 0) - 90);
-                                            fabricCanvas.renderAll();
-                                        }
-                                    }}
-                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                                >
-                                    ↺ 90°
-                                </button>
-                                
-                                <button 
-                                    on:click={() => {
-                                        if (selectedObject && selectedObject.type === "image") {
-                                            selectedObject.rotate((selectedObject.angle || 0) + 90);
-                                            fabricCanvas.renderAll();
-                                        }
-                                    }}
-                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                                >
-                                    ↻ 90°
-                                </button>
-                                
-                                <button 
-                                    on:click={() => {
-                                        if (selectedObject && selectedObject.type === "image") {
-                                            selectedObject.rotate(0);
-                                            fabricCanvas.renderAll();
-                                        }
-                                    }}
-                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                                >
-                                    Reset
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Flip</label>
-                            <div class="grid grid-cols-2 gap-1">
-                                <button 
-                                    on:click={() => {
-                                        if (selectedObject && selectedObject.type === "image") {
-                                            selectedObject.set('flipX', !selectedObject.flipX);
-                                            fabricCanvas.renderAll();
-                                        }
-                                    }}
-                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                                >
-                                    Horizontal
-                                </button>
-                                
-                                <button 
-                                    on:click={() => {
-                                        if (selectedObject && selectedObject.type === "image") {
-                                            selectedObject.set('flipY', !selectedObject.flipY);
-                                            fabricCanvas.renderAll();
-                                        }
-                                    }}
-                                    class="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                                >
-                                    Vertical
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            {/if}
-            
-            <!-- Object Properties (when any object is selected) -->
-            {#if selectedObject}
-                <div class="mb-6">
-                    <h3 class="text-sm font-medium mb-2">Alignment</h3>
-                    <div class="grid grid-cols-3 gap-1 mb-2">
-                        <button
-                            aria-label="Align Left"
-                            on:click={() => alignObject("left")}
-                            class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
-                        >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="h-4 w-4"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                            >
-                                <path
-                                    fill-rule="evenodd"
-                                    d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
-                                    clip-rule="evenodd"
-                                />
-                            </svg>
-                        </button>
-                        <button
-                            aria-label="Center Horizontally"
-                            on:click={() => alignObject("center-h")}
-                            class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
-                        >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="h-4 w-4"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                            >
-                                <path
-                                    fill-rule="evenodd"
-                                    d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
-                                    clip-rule="evenodd"
-                                />
-                            </svg>
-                        </button>
-                        <button
-                            aria-label="Align Right"
-                            on:click={() => alignObject("right")}
-                            class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
-                        >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="h-4 w-4"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                            >
-                                <path
-                                    fill-rule="evenodd"
-                                    d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM9 10a1 1 0 011-1h6a1 1 0 110 2h-6a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
-                                    clip-rule="evenodd"
-                                />
-                            </svg>
-                        </button>
-                    </div>
 
-                    <div class="grid grid-cols-3 gap-1">
+                        <div class="grid grid-cols-3 gap-1">
+                            <button
+                                aria-label="Align Top"
+                                on:click={() => alignObject("top")}
+                                class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        d="M5 4a1 1 0 011-1h8a1 1 0 011 1v1H5V4zM3 6a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM5 15a1 1 0 011-1h8a1 1 0 011 1v1H5v-1z"
+                                    />
+                                </svg>
+                            </button>
+                            <button
+                                aria-label="Center Vertically"
+                                on:click={() => alignObject("center-v")}
+                                class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        d="M10 3a1 1 0 011 1v2a1 1 0 11-2 0V4a1 1 0 011-1zM10 8a1 1 0 011 1v2a1 1 0 11-2 0V9a1 1 0 011-1zM10 13a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z"
+                                    />
+                                </svg>
+                            </button>
+                            <button
+                                aria-label="Align Bottom"
+                                on:click={() => alignObject("bottom")}
+                                class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        d="M5 3a1 1 0 011-1h8a1 1 0 011 1v1H5V3zM3 6a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM5 14a1 1 0 011-1h8a1 1 0 011 1v3H5v-3z"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+
                         <button
-                            aria-label="Align Top"
-                            on:click={() => alignObject("top")}
-                            class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                            on:click={deleteSelected}
+                            class="w-full mt-3 flex items-center justify-center px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded"
                         >
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
-                                class="h-4 w-4"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
+                                class="h-4 w-4 mr-1"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
                             >
                                 <path
-                                    d="M5 4a1 1 0 011-1h8a1 1 0 011 1v1H5V4zM3 6a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM5 15a1 1 0 011-1h8a1 1 0 011 1v1H5v-1z"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                                 />
                             </svg>
-                        </button>
-                        <button
-                            aria-label="Center Vertically"
-                            on:click={() => alignObject("center-v")}
-                            class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
-                        >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="h-4 w-4"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                            >
-                                <path
-                                    d="M10 3a1 1 0 011 1v2a1 1 0 11-2 0V4a1 1 0 011-1zM10 8a1 1 0 011 1v2a1 1 0 11-2 0V9a1 1 0 011-1zM10 13a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z"
-                                />
-                            </svg>
-                        </button>
-                        <button
-                            aria-label="Align Bottom"
-                            on:click={() => alignObject("bottom")}
-                            class="flex items-center justify-center py-1 bg-gray-100 hover:bg-gray-200 rounded"
-                        >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="h-4 w-4"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                            >
-                                <path
-                                    d="M5 3a1 1 0 011-1h8a1 1 0 011 1v1H5V3zM3 6a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM5 14a1 1 0 011-1h8a1 1 0 011 1v3H5v-3z"
-                                />
-                            </svg>
+                            Delete Object
                         </button>
                     </div>
-
-                    <button
-                        on:click={deleteSelected}
-                        class="w-full mt-3 flex items-center justify-center px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded"
-                    >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-4 w-4 mr-1"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                        </svg>
-                        Delete Object
-                    </button>
-                </div>
-            {/if}
+                {/if}
+            </div>
         </div>
 
         <!-- Main Canvas Area -->
-        <div class="flex-grow p-4 flex flex-col">
+        <div class="flex-grow p-4 flex flex-col overflow-hidden">
             <div
-                class="bg-gray-50 border rounded-lg p-4 flex-grow flex flex-col"
+                class="bg-gray-50 border rounded-lg p-4 flex-grow flex flex-col h-full"
             >
                 <div class="text-sm text-gray-600 mb-2">
                     Design Size: {canvasWidthMM}mm × {canvasHeightMM}mm
                 </div>
                 <div
-                    class="flex-grow flex items-center justify-center bg-gray-200 overflow-auto"
+                    class="flex items-center justify-center bg-gray-200 overflow-auto"
                     bind:this={canvasContainer}
+                    style="flex: 1; min-height: 0; position: relative;"
                 >
-                    <div class="relative shadow-lg">
+                    <div
+                        class="relative shadow-lg shadow-gray-500 border border-gray-700"
+                    >
                         <canvas id="design-canvas"></canvas>
                     </div>
                 </div>
@@ -1567,7 +1725,7 @@
     </div>
 
     <!-- Bottom Bar - Print Controls -->
-    <div class="bg-white shadow-md p-4">
+    <div class="bg-white shadow-md p-4 flex-shrink-0">
         <div
             class="container mx-auto flex flex-wrap justify-between items-center"
         >
