@@ -244,11 +244,160 @@ class WebBluetoothTransport extends BaseTransport {
   }
 }
 
+// Printer configurations
+const PRINTER_CONFIGS = {
+  b1: {
+    name: "B1",
+    maxWidth: 384,
+    maxDensity: 5,
+    supportedWidths: [384],
+    labelTypes: {
+      1: { name: "Continuous", width: 384, minHeight: 10, maxHeight: 2000 },
+      2: { name: "Gap", width: 384, minHeight: 10, maxHeight: 2000 },
+      3: { name: "Perforated", width: 384, minHeight: 10, maxHeight: 2000 },
+    },
+  },
+  b18: {
+    name: "B18",
+    maxWidth: 384,
+    maxDensity: 3,
+    supportedWidths: [384],
+    labelTypes: {
+      1: { name: "Continuous", width: 384, minHeight: 10, maxHeight: 2000 },
+      2: { name: "Gap", width: 384, minHeight: 10, maxHeight: 2000 },
+    },
+  },
+  b21: {
+    name: "B21",
+    maxWidth: 384,
+    maxDensity: 5,
+    supportedWidths: [384],
+    labelTypes: {
+      1: { name: "Continuous", width: 384, minHeight: 10, maxHeight: 4000 },
+      2: { name: "Gap", width: 384, minHeight: 10, maxHeight: 4000 },
+      3: { name: "Perforated", width: 384, minHeight: 10, maxHeight: 4000 },
+    },
+  },
+  d11: {
+    name: "D11",
+    maxWidth: 96,
+    maxDensity: 3,
+    supportedWidths: [96],
+    labelTypes: {
+      1: { name: "Continuous", width: 96, minHeight: 10, maxHeight: 1000 },
+      2: { name: "Gap", width: 96, minHeight: 10, maxHeight: 1000 },
+    },
+  },
+  d110: {
+    name: "D110",
+    maxWidth: 96,
+    maxDensity: 3,
+    supportedWidths: [96],
+    labelTypes: {
+      1: { name: "Continuous", width: 96, minHeight: 10, maxHeight: 1000 },
+      2: { name: "Gap", width: 96, minHeight: 10, maxHeight: 1000 },
+    },
+  },
+  // Add more printer models as needed
+  b203: {
+    name: "B203",
+    maxWidth: 576,
+    maxDensity: 5,
+    supportedWidths: [576, 384, 288],
+    labelTypes: {
+      1: { name: "Continuous", width: 576, minHeight: 10, maxHeight: 3000 },
+      2: { name: "Gap", width: 576, minHeight: 10, maxHeight: 3000 },
+      3: { name: "Round 25mm", width: 236, height: 236 },
+      4: { name: "Round 32mm", width: 302, height: 302 },
+    },
+  },
+};
+
+// Common label sizes (in pixels at 203 DPI)
+const COMMON_LABEL_SIZES = {
+  // Continuous labels
+  continuous_15mm: { width: 118, height: null, name: "15mm Continuous" },
+  continuous_25mm: { width: 236, height: null, name: "25mm Continuous" },
+  continuous_40mm: { width: 384, height: null, name: "40mm Continuous" },
+  continuous_50mm: { width: 480, height: null, name: "50mm Continuous" },
+
+  // Standard labels
+  label_15x25: { width: 118, height: 197, name: "15×25mm" },
+  label_25x25: { width: 236, height: 236, name: "25×25mm (Square)" },
+  label_25x40: { width: 236, height: 315, name: "25×40mm" },
+  label_40x30: { width: 384, height: 236, name: "40×30mm" },
+  label_40x60: { width: 384, height: 472, name: "40×60mm" },
+  label_50x30: { width: 480, height: 236, name: "50×30mm" },
+  label_50x80: { width: 480, height: 630, name: "50×80mm" },
+
+  // Round labels
+  round_25mm: { width: 236, height: 236, name: "25mm Round", isRound: true },
+  round_32mm: { width: 302, height: 302, name: "32mm Round", isRound: true },
+
+  // Custom
+  custom: { width: null, height: null, name: "Custom Size" },
+};
+
 // Printer Client
 class PrinterClient {
-  constructor(transport) {
+  constructor(transport, printerModel = "b21") {
     this.transport = transport;
     this.packetBuffer = new Uint8Array();
+    this.printerModel = printerModel;
+    this.config = PRINTER_CONFIGS[printerModel];
+    if (!this.config) {
+      throw new Error(`Unsupported printer model: ${printerModel}`);
+    }
+  }
+
+  getConfig() {
+    return this.config;
+  }
+
+  getSupportedLabelSizes() {
+    const supported = [];
+    const maxWidth = this.config.maxWidth;
+
+    for (const [key, size] of Object.entries(COMMON_LABEL_SIZES)) {
+      if (size.width && size.width <= maxWidth) {
+        supported.push({ key, ...size });
+      } else if (!size.width) {
+        // Continuous labels
+        supported.push({ key, ...size, width: maxWidth });
+      }
+    }
+
+    return supported;
+  }
+
+  validateDimensions(width, height) {
+    const errors = [];
+
+    if (width > this.config.maxWidth) {
+      errors.push(
+        `Width ${width}px exceeds maximum ${this.config.maxWidth}px for ${this.config.name}`,
+      );
+    }
+
+    if (width < 10) {
+      errors.push("Width must be at least 10px");
+    }
+
+    if (height && height < 10) {
+      errors.push("Height must be at least 10px");
+    }
+
+    // Check if width is supported
+    if (!this.config.supportedWidths.includes(width)) {
+      const closest = this.config.supportedWidths.reduce((prev, curr) =>
+        Math.abs(curr - width) < Math.abs(prev - width) ? curr : prev,
+      );
+      errors.push(
+        `Width ${width}px not directly supported. Closest supported width: ${closest}px`,
+      );
+    }
+
+    return errors;
   }
 
   async connect() {
@@ -259,18 +408,51 @@ class PrinterClient {
     await this.transport.disconnect();
   }
 
-  async printImage(imageCanvas, density = 3) {
+  async printImage(imageCanvas, options = {}) {
+    const {
+      density = 3,
+      labelType = 1,
+      copies = 1,
+      targetWidth = null,
+      targetHeight = null,
+      maintainAspectRatio = true,
+      centerImage = true,
+    } = options;
+
     try {
+      // Validate dimensions
+      const finalWidth = targetWidth || imageCanvas.width;
+      const finalHeight = targetHeight || imageCanvas.height;
+      const errors = this.validateDimensions(finalWidth, finalHeight);
+
+      if (errors.length > 0) {
+        throw new Error(`Dimension validation failed: ${errors.join(", ")}`);
+      }
+
+      // Resize canvas if needed
+      let printCanvas = imageCanvas;
+      if (targetWidth || targetHeight) {
+        printCanvas = this.resizeCanvas(imageCanvas, {
+          targetWidth: finalWidth,
+          targetHeight: finalHeight,
+          maintainAspectRatio,
+          centerImage,
+        });
+      }
+
       await this.setLabelDensity(density);
-      await this.setLabelType(1);
+      await this.setLabelType(labelType);
       await this.startPrint();
       await this.startPagePrint();
 
-      const { width, height } = imageCanvas;
-      await this.setDimension(height, width);
+      await this.setDimension(printCanvas.height, printCanvas.width);
+
+      if (copies > 1) {
+        await this.setQuantity(copies);
+      }
 
       // Encode and send image data
-      for await (const packet of this.encodeImage(imageCanvas)) {
+      for await (const packet of this.encodeImage(printCanvas)) {
         await this.send(packet);
       }
 
@@ -292,6 +474,61 @@ class PrinterClient {
       console.error("Print failed:", error);
       throw error;
     }
+  }
+
+  resizeCanvas(sourceCanvas, options) {
+    const {
+      targetWidth,
+      targetHeight,
+      maintainAspectRatio = true,
+      centerImage = true,
+      backgroundColor = "white",
+    } = options;
+
+    const newCanvas = document.createElement("canvas");
+    const ctx = newCanvas.getContext("2d");
+
+    newCanvas.width = targetWidth || sourceCanvas.width;
+    newCanvas.height = targetHeight || sourceCanvas.height;
+
+    // Fill background
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+
+    let drawWidth = sourceCanvas.width;
+    let drawHeight = sourceCanvas.height;
+    let drawX = 0;
+    let drawY = 0;
+
+    if (maintainAspectRatio && targetWidth && targetHeight) {
+      // Calculate scaling to fit within target dimensions
+      const scaleX = targetWidth / sourceCanvas.width;
+      const scaleY = targetHeight / sourceCanvas.height;
+      const scale = Math.min(scaleX, scaleY);
+
+      drawWidth = sourceCanvas.width * scale;
+      drawHeight = sourceCanvas.height * scale;
+
+      if (centerImage) {
+        drawX = (targetWidth - drawWidth) / 2;
+        drawY = (targetHeight - drawHeight) / 2;
+      }
+    } else if (targetWidth && !targetHeight) {
+      // Scale to width
+      const scale = targetWidth / sourceCanvas.width;
+      drawWidth = targetWidth;
+      drawHeight = sourceCanvas.height * scale;
+      newCanvas.height = drawHeight;
+    } else if (targetHeight && !targetWidth) {
+      // Scale to height
+      const scale = targetHeight / sourceCanvas.height;
+      drawHeight = targetHeight;
+      drawWidth = sourceCanvas.width * scale;
+      newCanvas.width = drawWidth;
+    }
+
+    ctx.drawImage(sourceCanvas, drawX, drawY, drawWidth, drawHeight);
+    return newCanvas;
   }
 
   async *encodeImage(canvas) {
@@ -442,7 +679,34 @@ class PrinterClient {
     }
     return null;
   }
+
+  async setQuantity(quantity) {
+    const data = new Uint8Array(2);
+    const view = new DataView(data.buffer);
+    view.setUint16(0, quantity, false);
+
+    const packet = await this.transceive(21, data);
+    return packet.data[0] !== 0;
+  }
+}
+
+// Utility functions
+function mmToPx(mm, dpi = 203) {
+  return Math.round((mm * dpi) / 25.4);
+}
+
+function pxToMm(px, dpi = 203) {
+  return Math.round((px * 25.4) / dpi);
 }
 
 // Usage example
-export { NiimbotPacket, WebUSBTransport, WebBluetoothTransport, PrinterClient };
+export {
+  NiimbotPacket,
+  WebUSBTransport,
+  WebBluetoothTransport,
+  PrinterClient,
+  PRINTER_CONFIGS,
+  COMMON_LABEL_SIZES,
+  mmToPx,
+  pxToMm,
+};
