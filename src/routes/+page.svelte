@@ -26,11 +26,27 @@
     const DPI = 203; // Standard DPI for thermal printers
 
     // Text properties
+    // Text and object properties
     let fontSize = 20;
     let fontFamily = "Arial";
     let textColor = "#000000";
     let selectedObject = null;
     let drawingMode = false;
+    let penSize = 2;
+    let penColor = "#000000";
+
+    // Update drawing brush when properties change
+    $: if (
+        fabricCanvas &&
+        fabricCanvas.isDrawingMode &&
+        fabricCanvas.freeDrawingBrush
+    ) {
+        fabricCanvas.freeDrawingBrush.width = penSize;
+        fabricCanvas.freeDrawingBrush.color = penColor;
+        fabricCanvas.freeDrawingBrush.strokeLineCap = "round";
+        fabricCanvas.freeDrawingBrush.strokeLineJoin = "round";
+        fabricCanvas.renderAll();
+    }
 
     // Printer model configurations
     const printerConfigs = {
@@ -103,7 +119,21 @@
             height: mmToPx(canvasHeightMM),
             preserveObjectStacking: true,
             selection: true,
+            isDrawingMode: false,
         });
+
+        // Initialize drawing brush - explicitly create the brush to ensure it exists
+        if (fabric.PencilBrush) {
+            fabricCanvas.freeDrawingBrush = new fabric.PencilBrush(
+                fabricCanvas,
+            );
+            fabricCanvas.freeDrawingBrush.width = penSize;
+            fabricCanvas.freeDrawingBrush.color = penColor;
+            fabricCanvas.freeDrawingBrush.strokeLineCap = "round";
+            fabricCanvas.freeDrawingBrush.strokeLineJoin = "round";
+        } else {
+            console.error("PencilBrush not available in Fabric.js");
+        }
 
         // Set up event handlers for object selection
         fabricCanvas.on("selection:created", handleObjectSelection);
@@ -241,13 +271,59 @@
     function toggleDrawMode() {
         if (!fabricCanvas) return;
 
+        // Toggle drawing mode
         fabricCanvas.isDrawingMode = !fabricCanvas.isDrawingMode;
         drawingMode = fabricCanvas.isDrawingMode;
 
         if (drawingMode) {
-            fabricCanvas.freeDrawingBrush.width = 2;
-            fabricCanvas.freeDrawingBrush.color = textColor;
+            // Ensure we have a brush and properly configure it
+            if (!fabricCanvas.freeDrawingBrush) {
+                try {
+                    fabricCanvas.freeDrawingBrush = new fabric.PencilBrush(
+                        fabricCanvas,
+                    );
+                } catch (e) {
+                    console.error("Error creating PencilBrush:", e);
+                    // Try alternative approach
+                    fabricCanvas.freeDrawingBrush =
+                        fabricCanvas._createPencilBrush
+                            ? fabricCanvas._createPencilBrush()
+                            : null;
+                }
+            }
+
+            if (fabricCanvas.freeDrawingBrush) {
+                // Configure the brush with current settings
+                fabricCanvas.freeDrawingBrush.width = penSize;
+                fabricCanvas.freeDrawingBrush.color = penColor;
+                fabricCanvas.freeDrawingBrush.strokeLineCap = "round";
+                fabricCanvas.freeDrawingBrush.strokeLineJoin = "round";
+            }
+
+            // Disable selection while in drawing mode
+            fabricCanvas.selection = false;
+
+            // Show cursor as crosshair in drawing mode
+            if (fabricCanvas.upperCanvasEl) {
+                fabricCanvas.upperCanvasEl.style.cursor = "crosshair";
+            }
+        } else {
+            // Re-enable selection when exiting drawing mode
+            fabricCanvas.selection = true;
+
+            // Reset cursor
+            if (fabricCanvas.upperCanvasEl) {
+                fabricCanvas.upperCanvasEl.style.cursor = "default";
+            }
         }
+
+        // Ensure canvas receives focus for immediate drawing
+        if (drawingMode && fabricCanvas.upperCanvasEl) {
+            fabricCanvas.upperCanvasEl.focus();
+        }
+
+        // Refresh canvas
+        fabricCanvas.renderAll();
     }
 
     function addText() {
@@ -598,6 +674,62 @@
                         </svg>
                         {drawingMode ? "Exit Drawing Mode" : "Draw Freehand"}
                     </button>
+
+                    {#if drawingMode}
+                        <div
+                            class="mt-2 p-2 bg-blue-50 rounded border border-blue-100"
+                        >
+                            <div class="mb-2">
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Pen Size</label
+                                >
+                                <div class="flex items-center">
+                                    <input
+                                        type="range"
+                                        bind:value={penSize}
+                                        min="1"
+                                        max="20"
+                                        class="flex-grow mr-2"
+                                        on:input={() => {
+                                            if (
+                                                fabricCanvas &&
+                                                fabricCanvas.freeDrawingBrush
+                                            ) {
+                                                fabricCanvas.freeDrawingBrush.width =
+                                                    penSize;
+                                            }
+                                        }}
+                                    />
+                                    <span class="text-xs w-6 text-center"
+                                        >{penSize}</span
+                                    >
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1"
+                                    >Pen Color</label
+                                >
+                                <input
+                                    type="color"
+                                    bind:value={penColor}
+                                    class="w-full h-8 p-0 border"
+                                    on:input={() => {
+                                        if (
+                                            fabricCanvas &&
+                                            fabricCanvas.freeDrawingBrush
+                                        ) {
+                                            fabricCanvas.freeDrawingBrush.color =
+                                                penColor;
+                                        }
+                                    }}
+                                />
+                            </div>
+                            <div class="text-xs text-blue-700 mt-2">
+                                Draw directly on the canvas. Click "Exit Drawing
+                                Mode" when finished.
+                            </div>
+                        </div>
+                    {/if}
 
                     <button
                         on:click={addText}
